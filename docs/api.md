@@ -85,3 +85,12 @@
   - 매치 상태가 `active`인지
   - 내 턴인지
   - 이미 제출된 턴 번호 중복 여부
+
+## `POST /api/matches/:matchId/leave`
+- 설명: 현재 유저가 매치를 나가며 매치를 종료 처리
+- 동작:
+  - `matches.status = finished`
+  - `matches.ended_reason = player_left`
+  - `matches.left_by = 현재 유저`
+  - 상대가 있으면 `winner_slot`을 상대 슬롯으로 설정
+- 응답: 갱신된 match row

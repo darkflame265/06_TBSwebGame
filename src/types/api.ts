@@ -8,6 +8,10 @@ export type MatchResponse = {
   room_code: string | null;
   current_turn: number;
   current_player_slot: number;
+  winner_slot: number | null;
+  ended_reason: "player_left" | "normal" | null;
+  left_by: string | null;
+  ended_at: string | null;
   created_at: string;
   players: Array<{
     user_id: string;

@@ -26,7 +26,9 @@ export async function GET(request: Request, context: Context) {
   const [matchResult, playersResult, turnsResult] = await Promise.all([
     client
       .from("matches")
-      .select("id,type,status,room_code,current_turn,current_player_slot,created_at")
+      .select(
+        "id,type,status,room_code,current_turn,current_player_slot,winner_slot,ended_reason,left_by,ended_at,created_at"
+      )
       .eq("id", matchId)
       .maybeSingle(),
     client

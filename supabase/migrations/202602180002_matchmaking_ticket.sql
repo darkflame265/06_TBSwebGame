@@ -86,7 +86,6 @@ begin
 end;
 $$;
 
-revoke execute on function public.join_matchmaking_queue() from public;
 revoke execute on function public.join_matchmaking_queue(uuid) from public;
 grant execute on function public.join_matchmaking_queue(uuid) to authenticated;
 

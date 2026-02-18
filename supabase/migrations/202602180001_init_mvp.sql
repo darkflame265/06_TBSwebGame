@@ -11,6 +11,8 @@ create table if not exists public.matches (
   current_turn integer not null default 1,
   current_player_slot smallint not null default 1 check (current_player_slot in (1, 2)),
   winner_slot smallint check (winner_slot in (1, 2)),
+  ended_reason text check (ended_reason in ('player_left', 'normal')),
+  left_by uuid references auth.users(id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   started_at timestamptz,
@@ -307,10 +309,71 @@ exception
 end;
 $$;
 
+create or replace function public.leave_match(p_match_id uuid)
+returns public.matches
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user uuid := auth.uid();
+  v_my_slot smallint;
+  v_opponent_slot smallint;
+  v_match public.matches%rowtype;
+begin
+  if v_user is null then
+    raise exception 'Unauthorized';
+  end if;
+
+  select mp.slot
+    into v_my_slot
+  from public.match_players mp
+  where mp.match_id = p_match_id
+    and mp.user_id = v_user;
+
+  if v_my_slot is null then
+    raise exception 'You are not part of this match';
+  end if;
+
+  select *
+    into v_match
+  from public.matches m
+  where m.id = p_match_id
+  for update;
+
+  if v_match.id is null then
+    raise exception 'Match not found';
+  end if;
+
+  if v_match.status = 'finished' then
+    return v_match;
+  end if;
+
+  select mp.slot
+    into v_opponent_slot
+  from public.match_players mp
+  where mp.match_id = p_match_id
+    and mp.user_id <> v_user
+  limit 1;
+
+  update public.matches
+  set status = 'finished',
+      ended_at = now(),
+      ended_reason = 'player_left',
+      left_by = v_user,
+      winner_slot = v_opponent_slot
+  where id = p_match_id
+  returning * into v_match;
+
+  return v_match;
+end;
+$$;
+
 revoke execute on function public.create_friend_match() from public;
 revoke execute on function public.join_friend_match(text) from public;
 revoke execute on function public.join_matchmaking_queue(uuid) from public;
 revoke execute on function public.submit_turn(uuid, jsonb) from public;
+revoke execute on function public.leave_match(uuid) from public;
 revoke execute on function public.is_match_player(uuid) from public;
 
 grant usage on schema public to anon, authenticated;
@@ -324,6 +387,7 @@ grant execute on function public.create_friend_match() to authenticated;
 grant execute on function public.join_friend_match(text) to authenticated;
 grant execute on function public.join_matchmaking_queue(uuid) to authenticated;
 grant execute on function public.submit_turn(uuid, jsonb) to authenticated;
+grant execute on function public.leave_match(uuid) to authenticated;
 grant execute on function public.is_match_player(uuid) to authenticated;
 
 alter table public.matches enable row level security;
@@ -391,6 +455,15 @@ begin
       and tablename = 'turns'
   ) then
     alter publication supabase_realtime add table public.turns;
+  end if;
+  if not exists (
+    select 1
+    from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'matches'
+  ) then
+    alter publication supabase_realtime add table public.matches;
   end if;
 end
 $$;
