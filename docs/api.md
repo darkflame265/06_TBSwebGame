@@ -29,17 +29,25 @@
 
 ## `POST /api/matchmaking/join`
 - 설명: 랜덤 매칭 큐 참가 또는 즉시 매칭
+- 요청(선택): 동일 큐 세션 유지용 ticket
+```json
+{
+  "ticketId": "uuid"
+}
+```
 - 응답(대기):
 ```json
 {
-  "status": "queued"
+  "status": "queued",
+  "ticket_id": "uuid"
 }
 ```
 - 응답(성공 매칭):
 ```json
 {
   "status": "matched",
-  "match_id": "uuid"
+  "match_id": "uuid",
+  "ticket_id": "uuid"
 }
 ```
 

@@ -17,6 +17,7 @@ type RoomJoinResponse = {
 type MatchmakingResponse = {
   status: "queued" | "matched";
   match_id?: string;
+  ticket_id?: string;
 };
 
 export function LobbyClient() {
@@ -28,6 +29,7 @@ export function LobbyClient() {
   const [queueing, setQueueing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const queueTicketRef = useRef<string | null>(null);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -59,7 +61,7 @@ export function LobbyClient() {
       const data = await apiPost<RoomCreateResponse>("/api/rooms/create");
       setCreatedRoom(data);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "방 생성 실패");
+      setMessage(error instanceof Error ? error.message : "Failed to create room");
     }
   };
 
@@ -69,24 +71,35 @@ export function LobbyClient() {
       const data = await apiPost<RoomJoinResponse>("/api/rooms/join", { roomCode });
       router.push(`/match/${data.match_id}`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "방 참가 실패");
+      setMessage(error instanceof Error ? error.message : "Failed to join room");
     }
   };
 
-  const tryMatchmake = async () => {
+  const tryMatchmake = async (ticketId?: string | null) => {
     try {
-      const data = await apiPost<MatchmakingResponse>("/api/matchmaking/join");
+      const data = await apiPost<MatchmakingResponse>("/api/matchmaking/join", {
+        ticketId: ticketId ?? undefined
+      });
+
+      if (data.ticket_id) {
+        queueTicketRef.current = data.ticket_id;
+      }
+
       if (data.status === "matched" && data.match_id) {
         if (intervalRef.current) {
           clearInterval(intervalRef.current);
         }
         setQueueing(false);
+        queueTicketRef.current = null;
         router.push(`/match/${data.match_id}`);
         return true;
       }
+
       return false;
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "매칭 요청 실패");
+      setQueueing(false);
+      queueTicketRef.current = null;
+      setMessage(error instanceof Error ? error.message : "Failed to join matchmaking queue");
       return false;
     }
   };
@@ -94,7 +107,9 @@ export function LobbyClient() {
   const joinMatchmaking = async () => {
     setMessage(null);
     setQueueing(true);
-    const matched = await tryMatchmake();
+    queueTicketRef.current = null;
+
+    const matched = await tryMatchmake(null);
     if (matched) {
       return;
     }
@@ -104,7 +119,7 @@ export function LobbyClient() {
     }
 
     intervalRef.current = setInterval(async () => {
-      const done = await tryMatchmake();
+      const done = await tryMatchmake(queueTicketRef.current);
       if (done && intervalRef.current) {
         clearInterval(intervalRef.current);
       }
@@ -114,38 +129,36 @@ export function LobbyClient() {
   return (
     <main className="mx-auto min-h-screen max-w-3xl p-6">
       <h1 className="text-3xl font-bold">1v1 TBS Lobby</h1>
-      <p className="mt-2 text-sm text-slate-600">
-        로그인 후 친구 대전 또는 랜덤 매칭을 시작하세요.
-      </p>
+      <p className="mt-2 text-sm text-slate-600">Sign in, then start friend match or random matchmaking.</p>
 
       <section className="mt-6 rounded-xl bg-white p-4 shadow-sm">
-        <h2 className="font-semibold">1) 게스트 로그인</h2>
+        <h2 className="font-semibold">1) Guest Login</h2>
         {userId ? (
-          <p className="mt-2 text-sm text-emerald-700">로그인됨: {userId}</p>
+          <p className="mt-2 text-sm text-emerald-700">Signed in: {userId}</p>
         ) : (
           <button
             onClick={signInGuest}
             className="mt-3 rounded-lg bg-slate-900 px-4 py-2 text-white hover:bg-slate-700"
           >
-            게스트 로그인
+            Sign in anonymously
           </button>
         )}
       </section>
 
       <section className="mt-4 rounded-xl bg-white p-4 shadow-sm">
-        <h2 className="font-semibold">2) 친구 대전</h2>
+        <h2 className="font-semibold">2) Friend Match</h2>
         <div className="mt-3 flex flex-wrap gap-2">
           <button
             onClick={createRoom}
             disabled={!userId}
             className="rounded-lg bg-blue-700 px-4 py-2 text-white disabled:cursor-not-allowed disabled:bg-slate-400"
           >
-            방 만들기
+            Create room
           </button>
           <input
             value={roomCode}
             onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-            placeholder="초대 코드 입력"
+            placeholder="Invite code"
             className="rounded-lg border border-slate-300 px-3 py-2"
           />
           <button
@@ -153,30 +166,27 @@ export function LobbyClient() {
             disabled={!userId || !roomCode}
             className="rounded-lg bg-emerald-700 px-4 py-2 text-white disabled:cursor-not-allowed disabled:bg-slate-400"
           >
-            코드로 참가
+            Join by code
           </button>
         </div>
         {createdRoom && (
           <p className="mt-3 text-sm">
-            생성된 코드: <span className="font-mono font-semibold">{createdRoom.room_code}</span> |{" "}
-            <a
-              className="text-blue-700 underline"
-              href={`/match/${createdRoom.match_id}`}
-            >
-              내 방 열기
+            Room code: <span className="font-mono font-semibold">{createdRoom.room_code}</span> |{" "}
+            <a className="text-blue-700 underline" href={`/match/${createdRoom.match_id}`}>
+              Open match
             </a>
           </p>
         )}
       </section>
 
       <section className="mt-4 rounded-xl bg-white p-4 shadow-sm">
-        <h2 className="font-semibold">3) 랜덤 매칭</h2>
+        <h2 className="font-semibold">3) Random Matchmaking</h2>
         <button
           onClick={joinMatchmaking}
           disabled={!userId || queueing}
           className="mt-3 rounded-lg bg-rose-700 px-4 py-2 text-white disabled:cursor-not-allowed disabled:bg-slate-400"
         >
-          {queueing ? "매칭 대기 중..." : "큐 참가"}
+          {queueing ? "Queueing..." : "Join queue"}
         </button>
       </section>
 

@@ -39,7 +39,9 @@ create table if not exists public.turns (
 
 create table if not exists public.matchmaking_queue (
   user_id uuid primary key references auth.users(id) on delete cascade,
-  joined_at timestamptz not null default now()
+  joined_at timestamptz not null default now(),
+  ticket_id uuid not null default gen_random_uuid(),
+  expires_at timestamptz not null default (now() + interval '30 seconds')
 );
 
 create index if not exists idx_matches_room_code on public.matches(room_code);
@@ -47,6 +49,8 @@ create index if not exists idx_matches_status on public.matches(status);
 create index if not exists idx_match_players_user_id on public.match_players(user_id);
 create index if not exists idx_turns_match_id_created_at on public.turns(match_id, created_at desc);
 create index if not exists idx_matchmaking_queue_joined_at on public.matchmaking_queue(joined_at);
+create unique index if not exists uq_matchmaking_queue_ticket_id on public.matchmaking_queue(ticket_id);
+create index if not exists idx_matchmaking_queue_expires_at on public.matchmaking_queue(expires_at);
 
 create or replace function public.set_updated_at()
 returns trigger
@@ -166,7 +170,7 @@ begin
 end;
 $$;
 
-create or replace function public.join_matchmaking_queue()
+create or replace function public.join_matchmaking_queue(p_ticket_id uuid default null)
 returns jsonb
 language plpgsql
 security definer
@@ -178,25 +182,48 @@ declare
   v_match_id uuid;
   v_my_slot smallint;
   v_other_slot smallint;
+  v_existing_match uuid;
+  v_ticket_id uuid := coalesce(p_ticket_id, gen_random_uuid());
 begin
   if v_user is null then
     raise exception 'Unauthorized';
   end if;
 
-  insert into public.matchmaking_queue (user_id, joined_at)
-  values (v_user, now())
-  on conflict (user_id) do update set joined_at = excluded.joined_at;
+  delete from public.matchmaking_queue where expires_at <= now();
+
+  select m.id
+    into v_existing_match
+  from public.matches m
+  join public.match_players mp on mp.match_id = m.id
+  where mp.user_id = v_user
+    and m.type = 'random'
+    and m.status = 'active'
+  order by m.created_at desc
+  limit 1;
+
+  if v_existing_match is not null then
+    delete from public.matchmaking_queue where user_id = v_user;
+    return jsonb_build_object('status', 'matched', 'match_id', v_existing_match, 'ticket_id', v_ticket_id);
+  end if;
+
+  insert into public.matchmaking_queue (user_id, ticket_id, joined_at, expires_at)
+  values (v_user, v_ticket_id, now(), now() + interval '30 seconds')
+  on conflict (user_id) do update
+  set ticket_id = excluded.ticket_id,
+      joined_at = excluded.joined_at,
+      expires_at = excluded.expires_at;
 
   select q.user_id
     into v_opponent
   from public.matchmaking_queue q
   where q.user_id <> v_user
+    and q.expires_at > now()
   order by q.joined_at asc
   limit 1
   for update skip locked;
 
   if v_opponent is null then
-    return jsonb_build_object('status', 'queued');
+    return jsonb_build_object('status', 'queued', 'ticket_id', v_ticket_id);
   end if;
 
   delete from public.matchmaking_queue
@@ -218,7 +245,7 @@ begin
   values (v_match_id, v_user, v_my_slot),
          (v_match_id, v_opponent, v_other_slot);
 
-  return jsonb_build_object('status', 'matched', 'match_id', v_match_id);
+  return jsonb_build_object('status', 'matched', 'match_id', v_match_id, 'ticket_id', v_ticket_id);
 end;
 $$;
 
@@ -282,7 +309,7 @@ $$;
 
 revoke execute on function public.create_friend_match() from public;
 revoke execute on function public.join_friend_match(text) from public;
-revoke execute on function public.join_matchmaking_queue() from public;
+revoke execute on function public.join_matchmaking_queue(uuid) from public;
 revoke execute on function public.submit_turn(uuid, jsonb) from public;
 revoke execute on function public.is_match_player(uuid) from public;
 
@@ -295,7 +322,7 @@ grant usage, select on all sequences in schema public to authenticated;
 
 grant execute on function public.create_friend_match() to authenticated;
 grant execute on function public.join_friend_match(text) to authenticated;
-grant execute on function public.join_matchmaking_queue() to authenticated;
+grant execute on function public.join_matchmaking_queue(uuid) to authenticated;
 grant execute on function public.submit_turn(uuid, jsonb) to authenticated;
 grant execute on function public.is_match_player(uuid) to authenticated;
 

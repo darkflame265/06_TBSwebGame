@@ -47,7 +47,9 @@ SUPABASE_SERVICE_ROLE_KEY=YOUR_SUPABASE_SERVICE_ROLE_KEY
 ## Supabase 설정
 
 1. Supabase 프로젝트 생성
-2. SQL Editor에서 `supabase/migrations/202602180001_init_mvp.sql` 실행
+2. SQL Editor에서 아래 순서로 실행
+   - `supabase/migrations/202602180001_init_mvp.sql`
+   - `supabase/migrations/202602180002_matchmaking_ticket.sql`
 3. Authentication > Providers에서 Anonymous 활성화
 4. Project Settings > API에서 URL/Anon Key/Service Role Key 확인
 
