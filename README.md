@@ -43,6 +43,7 @@ Run these in Supabase SQL Editor, in order:
 1. `supabase/migrations/202602180001_init_mvp.sql`
 2. `supabase/migrations/202602180002_matchmaking_ticket.sql`
 3. `supabase/migrations/202602180003_match_leave.sql`
+4. `supabase/migrations/202602180004_grid_game_rounds.sql`
 
 Then enable:
 - `Authentication > Providers > Anonymous`

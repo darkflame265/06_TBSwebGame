@@ -23,11 +23,18 @@ export async function GET(request: Request, context: Context) {
   }
   const { matchId } = parsedParams.data;
 
+  const { error: tickError } = await client.rpc("tick_match_round", {
+    p_match_id: matchId
+  });
+  if (tickError) {
+    return jsonError(tickError.message, 400);
+  }
+
   const [matchResult, playersResult, turnsResult] = await Promise.all([
     client
       .from("matches")
       .select(
-        "id,type,status,room_code,current_turn,current_player_slot,winner_slot,ended_reason,left_by,ended_at,created_at"
+        "id,type,status,room_code,current_turn,current_player_slot,winner_slot,ended_reason,left_by,ended_at,board_state,planning_ends_at,created_at"
       )
       .eq("id", matchId)
       .maybeSingle(),

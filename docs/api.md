@@ -1,10 +1,12 @@
 # API Endpoints (MVP)
 
-모든 요청은 `Authorization: Bearer <supabase_access_token>` 헤더가 필요합니다.
+All requests require:
+- `Authorization: Bearer <supabase_access_token>`
 
 ## `POST /api/rooms/create`
-- 설명: 친구 대전 방 생성
-- 응답:
+Create a friend room.
+
+Response:
 ```json
 {
   "match_id": "uuid",
@@ -13,14 +15,16 @@
 ```
 
 ## `POST /api/rooms/join`
-- 설명: 초대 코드로 친구 방 참가
-- 요청:
+Join friend room by invite code.
+
+Request:
 ```json
 {
   "roomCode": "AB12CD34"
 }
 ```
-- 응답:
+
+Response:
 ```json
 {
   "match_id": "uuid"
@@ -28,21 +32,24 @@
 ```
 
 ## `POST /api/matchmaking/join`
-- 설명: 랜덤 매칭 큐 참가 또는 즉시 매칭
-- 요청(선택): 동일 큐 세션 유지용 ticket
+Join random queue or get matched instantly.
+
+Request (optional):
 ```json
 {
   "ticketId": "uuid"
 }
 ```
-- 응답(대기):
+
+Response (queued):
 ```json
 {
   "status": "queued",
   "ticket_id": "uuid"
 }
 ```
-- 응답(성공 매칭):
+
+Response (matched):
 ```json
 {
   "status": "matched",
@@ -52,45 +59,37 @@
 ```
 
 ## `GET /api/matches/:matchId`
-- 설명: 매치 상태, 플레이어 목록, 턴 로그 조회
-- 응답:
-```json
-{
-  "id": "uuid",
-  "type": "friend",
-  "status": "active",
-  "room_code": "AB12CD34",
-  "current_turn": 3,
-  "current_player_slot": 1,
-  "created_at": "2026-02-18T00:00:00.000Z",
-  "players": [],
-  "turns": []
-}
-```
+Get match state, board state, players, and submitted paths.
+This endpoint also runs a server-side round tick (`tick_match_round`) to resolve expired planning rounds.
 
 ## `POST /api/matches/:matchId/turns`
-- 설명: 현재 턴 행동(JSON payload) 제출
-- 요청:
+Submit current round path.
+
+Request:
 ```json
 {
   "action": {
-    "type": "MOVE",
-    "unitId": "u1",
-    "to": [2, 3]
+    "path": [[0, 4], [1, 4]]
   }
 }
 ```
-- 검증:
-  - 매치 참여자인지
-  - 매치 상태가 `active`인지
-  - 내 턴인지
-  - 이미 제출된 턴 번호 중복 여부
+
+Validation:
+- Match participant only
+- Match must be `active`
+- One submission per player per round
+- `path.length <= min(current_turn, 10)`
+- Orthogonal move only (no diagonal)
+- In-bounds coordinates on 7x7 board (`0..6`)
+
+Round resolution:
+- If both players submitted, resolve immediately
+- If timer expires, resolve with missing path as stay-in-place
 
 ## `POST /api/matches/:matchId/leave`
-- 설명: 현재 유저가 매치를 나가며 매치를 종료 처리
-- 동작:
-  - `matches.status = finished`
-  - `matches.ended_reason = player_left`
-  - `matches.left_by = 현재 유저`
-  - 상대가 있으면 `winner_slot`을 상대 슬롯으로 설정
-- 응답: 갱신된 match row
+Leave and finish the match.
+
+Effects:
+- `matches.status = 'finished'`
+- `matches.ended_reason = 'player_left'`
+- `matches.left_by = current_user`

@@ -12,6 +12,11 @@ export type MatchResponse = {
   ended_reason: "player_left" | "normal" | null;
   left_by: string | null;
   ended_at: string | null;
+  board_state: {
+    p1: [number, number];
+    p2: [number, number];
+  } | null;
+  planning_ends_at: string | null;
   created_at: string;
   players: Array<{
     user_id: string;
