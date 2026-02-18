@@ -6,6 +6,7 @@ export type MatchResponse = {
   type: MatchType;
   status: MatchStatus;
   room_code: string | null;
+  phase: "planning" | "resolving";
   current_turn: number;
   current_player_slot: number;
   winner_slot: number | null;
@@ -17,6 +18,16 @@ export type MatchResponse = {
     p2: [number, number];
   } | null;
   planning_ends_at: string | null;
+  resolution_ends_at: string | null;
+  resolved_paths: {
+    turn: number;
+    start: {
+      p1: [number, number];
+      p2: [number, number];
+    };
+    p1: Array<[number, number]>;
+    p2: Array<[number, number]>;
+  } | null;
   created_at: string;
   players: Array<{
     user_id: string;

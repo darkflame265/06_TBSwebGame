@@ -10,42 +10,20 @@ type Props = {
   matchId: string;
 };
 
-type Coord = [number, number]; // [row, col]
-type DisplayBoard = {
-  p1: Coord;
-  p2: Coord;
-};
+type Coord = [number, number];
+type DisplayBoard = { p1: Coord; p2: Coord };
 
 const BOARD_SIZE = 7;
 const STEP_ANIMATION_MS = 320;
 const CELL_SIZE = 56;
 const CELL_GAP = 4;
 const BOARD_PX = BOARD_SIZE * CELL_SIZE + (BOARD_SIZE - 1) * CELL_GAP;
-
-const DEFAULT_BOARD: DisplayBoard = {
-  p1: [0, 3],
-  p2: [6, 3]
-};
+const DEFAULT_BOARD: DisplayBoard = { p1: [0, 3], p2: [6, 3] };
 
 const sameCoord = (a: Coord, b: Coord) => a[0] === b[0] && a[1] === b[1];
 const isOrthogonalStep = (from: Coord, to: Coord) =>
   Math.abs(from[0] - to[0]) + Math.abs(from[1] - to[1]) === 1;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-const toPath = (payload: Record<string, unknown>): Coord[] => {
-  const raw = payload.path;
-  if (!Array.isArray(raw)) return [];
-  const out: Coord[] = [];
-  for (const point of raw) {
-    if (!Array.isArray(point) || point.length !== 2) continue;
-    const row = Number(point[0]);
-    const col = Number(point[1]);
-    if (!Number.isInteger(row) || !Number.isInteger(col)) continue;
-    out.push([row, col]);
-  }
-  return out;
-};
-
 const coordToPx = ([row, col]: Coord) => ({
   left: col * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2,
   top: row * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2
@@ -54,6 +32,7 @@ const coordToPx = ([row, col]: Coord) => ({
 export function MatchClient({ matchId }: Props) {
   const router = useRouter();
   const supabase = getBrowserSupabaseClient();
+
   const [match, setMatch] = useState<MatchResponse | null>(null);
   const [me, setMe] = useState<string | null>(null);
   const [plannedPath, setPlannedPath] = useState<Coord[]>([]);
@@ -63,9 +42,15 @@ export function MatchClient({ matchId }: Props) {
   const [animating, setAnimating] = useState(false);
   const [draggingPath, setDraggingPath] = useState(false);
   const [nowMs, setNowMs] = useState(Date.now());
+  const [resolvedOverlay, setResolvedOverlay] = useState<{
+    start: DisplayBoard;
+    p1: Coord[];
+    p2: Coord[];
+  } | null>(null);
 
   const prevMatchRef = useRef<MatchResponse | null>(null);
   const animatingRef = useRef(false);
+  const animatedTurnRef = useRef<number | null>(null);
   const autoSubmittedRoundRef = useRef<number | null>(null);
 
   const mySlot = useMemo(() => {
@@ -73,24 +58,38 @@ export function MatchClient({ matchId }: Props) {
     return match.players.find((p) => p.user_id === me)?.slot ?? null;
   }, [match, me]);
 
-  const animateRound = async (from: DisplayBoard, path1: Coord[], path2: Coord[]) => {
-    const steps = Math.max(path1.length, path2.length);
-    if (steps <= 0) {
-      setDisplayBoard(from);
-      return;
-    }
-    let p1 = from.p1;
-    let p2 = from.p2;
+  const mySubmitted = useMemo(() => {
+    if (!match || mySlot === null) return false;
+    return match.turns.some((t) => t.turn_number === match.current_turn && t.player_slot === mySlot);
+  }, [match, mySlot]);
+
+  const canPlan = !!match && match.status === "active" && match.phase === "planning" && mySlot !== null && !mySubmitted && !animating;
+
+  const animateResolvedRound = async (start: DisplayBoard, p1Path: Coord[], p2Path: Coord[]) => {
+    const steps = Math.max(p1Path.length, p2Path.length);
+    setResolvedOverlay({ start, p1: p1Path, p2: p2Path });
     animatingRef.current = true;
     setAnimating(true);
+
+    let p1 = start.p1;
+    let p2 = start.p2;
+    if (steps <= 0) {
+      await sleep(200);
+      setDisplayBoard({ p1, p2 });
+      setAnimating(false);
+      animatingRef.current = false;
+      return;
+    }
+
     for (let i = 0; i < steps; i += 1) {
-      if (i < path1.length) p1 = path1[i];
-      if (i < path2.length) p2 = path2[i];
+      if (i < p1Path.length) p1 = p1Path[i];
+      if (i < p2Path.length) p2 = p2Path[i];
       setDisplayBoard({ p1, p2 });
       await sleep(STEP_ANIMATION_MS);
     }
-    animatingRef.current = false;
+
     setAnimating(false);
+    animatingRef.current = false;
   };
 
   const loadMatch = async () => {
@@ -101,17 +100,24 @@ export function MatchClient({ matchId }: Props) {
 
       if (!prev) {
         setDisplayBoard(nextBoard);
-      } else if (data.current_turn === prev.current_turn + 1 && prev.board_state && !animatingRef.current) {
-        const resolvedRound = prev.current_turn;
-        const p1Turn = data.turns.find((t) => t.turn_number === resolvedRound && t.player_slot === 1);
-        const p2Turn = data.turns.find((t) => t.turn_number === resolvedRound && t.player_slot === 2);
-        await animateRound(
-          { p1: prev.board_state.p1, p2: prev.board_state.p2 },
-          p1Turn ? toPath(p1Turn.action_payload) : [],
-          p2Turn ? toPath(p2Turn.action_payload) : []
-        );
+      } else if (
+        data.phase === "resolving" &&
+        data.resolved_paths &&
+        animatedTurnRef.current !== data.resolved_paths.turn &&
+        !animatingRef.current
+      ) {
+        const start = data.resolved_paths.start;
+        await animateResolvedRound({ p1: start.p1, p2: start.p2 }, data.resolved_paths.p1, data.resolved_paths.p2);
+        animatedTurnRef.current = data.resolved_paths.turn;
       } else if (!animatingRef.current) {
         setDisplayBoard(nextBoard);
+      }
+
+      if (prev && prev.phase === "resolving" && data.phase === "planning") {
+        setResolvedOverlay(null);
+        setPlannedPath([]);
+        setDraggingPath(false);
+        autoSubmittedRoundRef.current = null;
       }
 
       prevMatchRef.current = data;
@@ -133,7 +139,7 @@ export function MatchClient({ matchId }: Props) {
   }, []);
 
   useEffect(() => {
-    const poll = setInterval(() => loadMatch(), 1500);
+    const poll = setInterval(() => loadMatch(), 1000);
     return () => clearInterval(poll);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchId]);
@@ -158,17 +164,45 @@ export function MatchClient({ matchId }: Props) {
         () => loadMatch()
       )
       .subscribe();
+
     return () => {
       supabase.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchId]);
 
+  const submitPath = async (pathToSubmit: Coord[]) => {
+    if (!match || !canPlan) return;
+    try {
+      await apiPost(`/api/matches/${matchId}/turns`, { action: { path: pathToSubmit } });
+      await loadMatch();
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Failed to submit path";
+      setMessage(msg);
+      if (msg.toLowerCase().includes("planning window closed") || msg.toLowerCase().includes("resolving")) {
+        await loadMatch();
+      }
+    }
+  };
+
+  const deadlineMs =
+    match?.phase === "planning"
+      ? match.planning_ends_at
+        ? new Date(match.planning_ends_at).getTime()
+        : nowMs
+      : match?.resolution_ends_at
+        ? new Date(match.resolution_ends_at).getTime()
+        : nowMs;
+  const millisLeft = Math.max(0, deadlineMs - nowMs);
+
   useEffect(() => {
-    setPlannedPath([]);
-    setDraggingPath(false);
-    autoSubmittedRoundRef.current = null;
-  }, [match?.current_turn]);
+    if (!match || !canPlan || mySubmitted) return;
+    if (millisLeft > 200) return;
+    if (autoSubmittedRoundRef.current === match.current_turn) return;
+    autoSubmittedRoundRef.current = match.current_turn;
+    void submitPath(plannedPath);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [millisLeft, canPlan, mySubmitted, match?.current_turn, plannedPath]);
 
   const leaveMatch = async () => {
     setMessage(null);
@@ -186,40 +220,6 @@ export function MatchClient({ matchId }: Props) {
     }
   };
 
-  const myPos: Coord | null = mySlot === 1 ? displayBoard.p1 : mySlot === 2 ? displayBoard.p2 : null;
-  const currentEnd: Coord | null = myPos ? (plannedPath.length > 0 ? plannedPath[plannedPath.length - 1] : myPos) : null;
-  const maxPoints = match ? Math.min(match.current_turn, 10) : 1;
-  const mySubmitted =
-    !!match &&
-    mySlot !== null &&
-    match.turns.some((t) => t.turn_number === match.current_turn && t.player_slot === mySlot);
-  const canPlan = !!match && match.status === "active" && mySlot !== null && !mySubmitted && !animating;
-  const deadlineMs = match?.planning_ends_at ? new Date(match.planning_ends_at).getTime() : nowMs;
-  const millisLeft = Math.max(0, deadlineMs - nowMs);
-  const secondsLeft = (millisLeft / 1000).toFixed(1);
-  const myColor = mySlot === 1 ? "Red" : mySlot === 2 ? "Blue" : "-";
-
-  const submitPath = async (pathToSubmit: Coord[]) => {
-    if (!match || !canPlan) return;
-    try {
-      await apiPost(`/api/matches/${matchId}/turns`, { action: { path: pathToSubmit } });
-      setPlannedPath([]);
-      await loadMatch();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Failed to submit path");
-    }
-  };
-
-  useEffect(() => {
-    if (!match || !canPlan || mySubmitted) return;
-    if (plannedPath.length === 0) return;
-    if (millisLeft > 0) return;
-    if (autoSubmittedRoundRef.current === match.current_turn) return;
-    autoSubmittedRoundRef.current = match.current_turn;
-    void submitPath(plannedPath);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [millisLeft, canPlan, mySubmitted, plannedPath, match?.current_turn]);
-
   if (!match) {
     return (
       <main className="mx-auto min-h-screen max-w-5xl p-6">
@@ -228,6 +228,12 @@ export function MatchClient({ matchId }: Props) {
       </main>
     );
   }
+
+  const myPos: Coord | null = mySlot === 1 ? displayBoard.p1 : mySlot === 2 ? displayBoard.p2 : null;
+  const currentEnd: Coord | null = myPos ? (plannedPath.length > 0 ? plannedPath[plannedPath.length - 1] : myPos) : null;
+  const maxPoints = Math.min(match.current_turn, 10);
+  const myColor = mySlot === 1 ? "Red" : mySlot === 2 ? "Blue" : "-";
+  const secondsLeft = (millisLeft / 1000).toFixed(1);
 
   const beginPathDrag = (row: number, col: number) => {
     if (!canPlan || !currentEnd) return;
@@ -243,24 +249,24 @@ export function MatchClient({ matchId }: Props) {
       if (sameCoord(end, target)) return prev;
 
       const back = prev.length > 0 ? (prev.length > 1 ? prev[prev.length - 2] : myPos) : null;
-      if (back && sameCoord(back, target)) {
-        return prev.slice(0, -1);
-      }
-
+      if (back && sameCoord(back, target)) return prev.slice(0, -1);
       if (!isOrthogonalStep(end, target)) return prev;
       if (prev.length >= maxPoints) return prev;
       return [...prev, target];
     });
   };
 
-  const undoPath = () => setPlannedPath((prev) => prev.slice(0, -1));
-  const clearPath = () => setPlannedPath([]);
+  const pathToLine = (points: Coord[]) =>
+    points
+      .map((coord) => {
+        const p = coordToPx(coord);
+        return `${p.left},${p.top}`;
+      })
+      .join(" ");
 
-  const pathPoints: Coord[] = myPos ? [myPos, ...plannedPath] : [];
-  const linePoints = pathPoints.map((coord) => {
-    const p = coordToPx(coord);
-    return `${p.left},${p.top}`;
-  });
+  const planningLine = myPos ? pathToLine([myPos, ...plannedPath]) : "";
+  const resolvingP1Line = resolvedOverlay ? pathToLine([resolvedOverlay.start.p1, ...resolvedOverlay.p1]) : "";
+  const resolvingP2Line = resolvedOverlay ? pathToLine([resolvedOverlay.start.p2, ...resolvedOverlay.p2]) : "";
 
   const p1Px = coordToPx(displayBoard.p1);
   const p2Px = coordToPx(displayBoard.p2);
@@ -281,9 +287,9 @@ export function MatchClient({ matchId }: Props) {
       <div className="mt-3 rounded-xl bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm text-slate-700">
-            Status: {match.status} | Round: {match.current_turn} | Piece: {myColor} | Max path points: {maxPoints}
+            Status: {match.status} | Phase: {match.phase} | Round: {match.current_turn} | Piece: {myColor} | Max path points: {maxPoints}
           </p>
-          <p className="font-mono text-sm font-semibold text-slate-900">Planning timer: {secondsLeft}s / 10.0s</p>
+          <p className="font-mono text-sm font-semibold text-slate-900">{match.phase} timer: {secondsLeft}s</p>
         </div>
         <div className="mt-2 h-2 w-full overflow-hidden rounded bg-slate-200">
           <div className="h-full bg-emerald-500" style={{ width: `${Math.max(0, Math.min(100, (millisLeft / 10000) * 100))}%` }} />
@@ -292,12 +298,8 @@ export function MatchClient({ matchId }: Props) {
 
       <section className="mt-4 rounded-xl bg-white p-4 shadow-sm">
         <h2 className="font-semibold">Board 7x7</h2>
-        <p className="mt-1 text-sm text-slate-600">
-          Hold and drag from your piece or current path end to edit route. Timer end auto-submits your current route.
-        </p>
-
         <div className="relative mt-3" style={{ width: BOARD_PX, height: BOARD_PX }}>
-          <div className="grid grid-cols-7 gap-1 rounded-lg bg-slate-200 p-0" style={{ width: BOARD_PX, height: BOARD_PX }}>
+          <div className="grid grid-cols-7 gap-1" style={{ width: BOARD_PX, height: BOARD_PX }}>
             {Array.from({ length: BOARD_SIZE }).map((_, row) =>
               Array.from({ length: BOARD_SIZE }).map((__, col) => (
                 <button
@@ -306,7 +308,7 @@ export function MatchClient({ matchId }: Props) {
                   onPointerDown={() => beginPathDrag(row, col)}
                   onPointerEnter={() => extendOrRewindPath(row, col)}
                   onPointerUp={() => setDraggingPath(false)}
-                  className={`relative rounded border border-slate-300 bg-white text-[10px] text-slate-500 ${
+                  className={`rounded border border-slate-300 bg-white text-[10px] text-slate-500 ${
                     canPlan ? "hover:bg-slate-100" : "cursor-default"
                   }`}
                   style={{ width: CELL_SIZE, height: CELL_SIZE }}
@@ -317,42 +319,41 @@ export function MatchClient({ matchId }: Props) {
             )}
           </div>
 
-          <svg
-            className="pointer-events-none absolute inset-0"
-            width={BOARD_PX}
-            height={BOARD_PX}
-            viewBox={`0 0 ${BOARD_PX} ${BOARD_PX}`}
-          >
-            {linePoints.length >= 2 && (
-              <polyline
-                points={linePoints.join(" ")}
-                fill="none"
-                stroke={mySlot === 1 ? "#dc2626" : "#2563eb"}
-                strokeWidth="6"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                opacity="0.75"
-              />
+          <svg className="pointer-events-none absolute inset-0" width={BOARD_PX} height={BOARD_PX} viewBox={`0 0 ${BOARD_PX} ${BOARD_PX}`}>
+            {match.phase === "planning" && planningLine.split(" ").length >= 2 && (
+              <polyline points={planningLine} fill="none" stroke={mySlot === 1 ? "#dc2626" : "#2563eb"} strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" opacity="0.75" />
+            )}
+            {match.phase === "resolving" && resolvingP1Line.split(" ").length >= 2 && (
+              <polyline points={resolvingP1Line} fill="none" stroke="#dc2626" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" opacity="0.75" />
+            )}
+            {match.phase === "resolving" && resolvingP2Line.split(" ").length >= 2 && (
+              <polyline points={resolvingP2Line} fill="none" stroke="#2563eb" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" opacity="0.75" />
             )}
           </svg>
 
           <div
-            className="pointer-events-none absolute h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500 shadow-md"
+            className="pointer-events-none absolute h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500"
             style={{
               left: p1Px.left,
               top: p1Px.top,
-              transition: `left ${STEP_ANIMATION_MS}ms linear, top ${STEP_ANIMATION_MS}ms linear`
+              transition: `left ${STEP_ANIMATION_MS}ms linear, top ${STEP_ANIMATION_MS}ms linear`,
+              boxShadow:
+                mySlot === 1
+                  ? "0 0 0 3px rgba(34,197,94,0.85), 0 0 12px 3px rgba(34,197,94,0.65)"
+                  : "0 2px 6px rgba(15,23,42,0.25)"
             }}
-            title="Red (P1)"
           />
           <div
-            className="pointer-events-none absolute h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-500 shadow-md"
+            className="pointer-events-none absolute h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-500"
             style={{
               left: p2Px.left,
               top: p2Px.top,
-              transition: `left ${STEP_ANIMATION_MS}ms linear, top ${STEP_ANIMATION_MS}ms linear`
+              transition: `left ${STEP_ANIMATION_MS}ms linear, top ${STEP_ANIMATION_MS}ms linear`,
+              boxShadow:
+                mySlot === 2
+                  ? "0 0 0 3px rgba(34,197,94,0.85), 0 0 12px 3px rgba(34,197,94,0.65)"
+                  : "0 2px 6px rgba(15,23,42,0.25)"
             }}
-            title="Blue (P2)"
           />
         </div>
       </section>
@@ -360,13 +361,11 @@ export function MatchClient({ matchId }: Props) {
       <section className="mt-4 rounded-xl bg-white p-4 shadow-sm">
         <h2 className="font-semibold">Path Planning</h2>
         <p className="mt-1 text-sm text-slate-600">
-          {animating
-            ? "Pieces are moving..."
-            : match.status !== "active"
-              ? "Match ended."
-              : mySubmitted
-                ? "Path submitted. Waiting for opponent or timer..."
-                : "Drag to set path. No need to press submit if timer expires."}
+          {match.phase === "resolving"
+            ? "Resolving round..."
+            : mySubmitted
+              ? "Path submitted."
+              : "Drag from your piece (or path end) to set route."}
         </p>
         <div className="mt-2 flex flex-wrap gap-2">
           <button
@@ -379,7 +378,7 @@ export function MatchClient({ matchId }: Props) {
           </button>
           <button
             type="button"
-            onClick={undoPath}
+            onClick={() => setPlannedPath((prev) => prev.slice(0, -1))}
             disabled={!canPlan || plannedPath.length === 0}
             className="rounded-lg bg-slate-700 px-4 py-2 text-white disabled:cursor-not-allowed disabled:bg-slate-400"
           >
@@ -387,14 +386,13 @@ export function MatchClient({ matchId }: Props) {
           </button>
           <button
             type="button"
-            onClick={clearPath}
+            onClick={() => setPlannedPath([])}
             disabled={!canPlan || plannedPath.length === 0}
             className="rounded-lg bg-slate-500 px-4 py-2 text-white disabled:cursor-not-allowed disabled:bg-slate-400"
           >
             Clear
           </button>
         </div>
-        <pre className="mt-3 rounded bg-slate-100 p-2 text-xs">{JSON.stringify({ path: plannedPath }, null, 2)}</pre>
       </section>
 
       {message && <p className="mt-4 rounded-lg bg-red-100 p-3 text-sm text-red-700">{message}</p>}
