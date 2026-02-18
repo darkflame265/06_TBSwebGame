@@ -28,25 +28,6 @@ const coordToPx = ([row, col]: Coord) => ({
   left: col * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2,
   top: row * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2
 });
-const parseCoord = (value: unknown): Coord | null => {
-  if (!Array.isArray(value) || value.length !== 2) return null;
-  const row = value[0];
-  const col = value[1];
-  if (typeof row !== "number" || typeof col !== "number") return null;
-  return [row, col];
-};
-const getTurnPath = (data: MatchResponse, turnNumber: number, slot: number): Coord[] => {
-  const turn = data.turns.find((t) => t.turn_number === turnNumber && t.player_slot === slot);
-  const payload = turn?.action_payload as { path?: unknown } | undefined;
-  if (!payload || !Array.isArray(payload.path)) return [];
-  const path: Coord[] = [];
-  for (const item of payload.path) {
-    const coord = parseCoord(item);
-    if (!coord) break;
-    path.push(coord);
-  }
-  return path;
-};
 
 export function MatchClient({ matchId }: Props) {
   const router = useRouter();
@@ -141,16 +122,6 @@ export function MatchClient({ matchId }: Props) {
         const start = data.resolved_paths.start;
         await animateResolvedRound({ p1: start.p1, p2: start.p2 }, data.resolved_paths.p1, data.resolved_paths.p2);
         animatedTurnRef.current = data.resolved_paths.turn;
-      } else if (data.current_turn > prev.current_turn && !animatingRef.current) {
-        const resolvedTurn = data.current_turn - 1;
-        const p1Path = getTurnPath(data, resolvedTurn, 1);
-        const p2Path = getTurnPath(data, resolvedTurn, 2);
-        const startBoard = prev.board_state ?? DEFAULT_BOARD;
-        if (p1Path.length > 0 || p2Path.length > 0) {
-          await animateResolvedRound(startBoard, p1Path, p2Path);
-        }
-        setDisplayBoard(nextBoard);
-        setResolvedOverlay(null);
       } else if (!animatingRef.current) {
         setDisplayBoard(nextBoard);
       }
