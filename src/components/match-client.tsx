@@ -100,6 +100,11 @@ export function MatchClient({ matchId }: Props) {
 
   const leaveMatch = async () => {
     setMessage(null);
+    if (match?.status === "finished") {
+      router.push("/");
+      return;
+    }
+
     setLeaving(true);
     try {
       await apiPost(`/api/matches/${matchId}/leave`);
@@ -132,10 +137,10 @@ export function MatchClient({ matchId }: Props) {
         <h1 className="text-3xl font-bold">Match {match.id}</h1>
         <button
           onClick={leaveMatch}
-          disabled={leaving || match.status === "finished"}
+          disabled={leaving}
           className="rounded-lg bg-red-700 px-4 py-2 text-white disabled:cursor-not-allowed disabled:bg-slate-400"
         >
-          {leaving ? "Leaving..." : "Leave match"}
+          {leaving ? "Leaving..." : match.status === "finished" ? "Back to lobby" : "Leave match"}
         </button>
       </div>
 
