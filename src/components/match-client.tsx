@@ -61,6 +61,7 @@ export function MatchClient({ matchId }: Props) {
   const [animating, setAnimating] = useState(false);
   const [draggingPath, setDraggingPath] = useState(false);
   const [nowMs, setNowMs] = useState(Date.now());
+  const [frozenTimerMs, setFrozenTimerMs] = useState<number | null>(null);
   const [resolvedOverlay, setResolvedOverlay] = useState<{
     start: DisplayBoard;
     p1: Coord[];
@@ -71,6 +72,7 @@ export function MatchClient({ matchId }: Props) {
   const animatingRef = useRef(false);
   const animatedTurnRef = useRef<number | null>(null);
   const autoSubmittedRoundRef = useRef<number | null>(null);
+  const latestMillisLeftRef = useRef(0);
 
   const mySlot = useMemo(() => {
     if (!match || !me) return null;
@@ -95,6 +97,7 @@ export function MatchClient({ matchId }: Props) {
   const animateResolvedRound = async (start: DisplayBoard, p1Path: Coord[], p2Path: Coord[]) => {
     const steps = Math.max(p1Path.length, p2Path.length);
     setResolvedOverlay({ start, p1: p1Path, p2: p2Path });
+    setFrozenTimerMs(Math.max(0, latestMillisLeftRef.current));
     animatingRef.current = true;
     setAnimating(true);
 
@@ -105,6 +108,7 @@ export function MatchClient({ matchId }: Props) {
       setDisplayBoard({ p1, p2 });
       setAnimating(false);
       animatingRef.current = false;
+      setFrozenTimerMs(null);
       return;
     }
 
@@ -117,6 +121,7 @@ export function MatchClient({ matchId }: Props) {
 
     setAnimating(false);
     animatingRef.current = false;
+    setFrozenTimerMs(null);
   };
 
   const loadMatch = async () => {
@@ -237,6 +242,11 @@ export function MatchClient({ matchId }: Props) {
         ? new Date(match.resolution_ends_at).getTime()
         : nowMs;
   const millisLeft = Math.max(0, deadlineMs - nowMs);
+  const shownMillisLeft = frozenTimerMs ?? millisLeft;
+
+  useEffect(() => {
+    latestMillisLeftRef.current = millisLeft;
+  }, [millisLeft]);
 
   useEffect(() => {
     if (!match || !canPlan || mySubmitted) return;
@@ -276,7 +286,7 @@ export function MatchClient({ matchId }: Props) {
   const currentEnd: Coord | null = myPos ? (plannedPath.length > 0 ? plannedPath[plannedPath.length - 1] : myPos) : null;
   const maxPoints = Math.min(match.current_turn, 10);
   const myColor = mySlot === 1 ? "Red" : mySlot === 2 ? "Blue" : "-";
-  const secondsLeft = (millisLeft / 1000).toFixed(1);
+  const secondsLeft = (shownMillisLeft / 1000).toFixed(1);
 
   const beginPathDrag = (row: number, col: number) => {
     if (!canPlan || !currentEnd) return;
@@ -332,10 +342,12 @@ export function MatchClient({ matchId }: Props) {
           <p className="text-sm text-slate-700">
             Status: {match.status} | Phase: {match.phase} | Round: {match.current_turn} | Piece: {myColor} | Max path points: {maxPoints}
           </p>
-          <p className="font-mono text-sm font-semibold text-slate-900">{match.phase} timer: {secondsLeft}s</p>
+          <p className="font-mono text-sm font-semibold text-slate-900">
+            {animating ? "moving..." : `${match.phase} timer: ${secondsLeft}s`}
+          </p>
         </div>
         <div className="mt-2 h-2 w-full overflow-hidden rounded bg-slate-200">
-          <div className="h-full bg-emerald-500" style={{ width: `${Math.max(0, Math.min(100, (millisLeft / 10000) * 100))}%` }} />
+          <div className="h-full bg-emerald-500" style={{ width: `${Math.max(0, Math.min(100, (shownMillisLeft / 10000) * 100))}%` }} />
         </div>
       </div>
 
