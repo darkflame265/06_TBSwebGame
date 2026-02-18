@@ -28,6 +28,25 @@ const coordToPx = ([row, col]: Coord) => ({
   left: col * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2,
   top: row * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2
 });
+const parseCoord = (value: unknown): Coord | null => {
+  if (!Array.isArray(value) || value.length !== 2) return null;
+  const row = value[0];
+  const col = value[1];
+  if (typeof row !== "number" || typeof col !== "number") return null;
+  return [row, col];
+};
+const getTurnPath = (data: MatchResponse, turnNumber: number, slot: number): Coord[] => {
+  const turn = data.turns.find((t) => t.turn_number === turnNumber && t.player_slot === slot);
+  const payload = turn?.action_payload as { path?: unknown } | undefined;
+  if (!payload || !Array.isArray(payload.path)) return [];
+  const path: Coord[] = [];
+  for (const item of payload.path) {
+    const coord = parseCoord(item);
+    if (!coord) break;
+    path.push(coord);
+  }
+  return path;
+};
 
 export function MatchClient({ matchId }: Props) {
   const router = useRouter();
@@ -62,6 +81,14 @@ export function MatchClient({ matchId }: Props) {
     if (!match || mySlot === null) return false;
     return match.turns.some((t) => t.turn_number === match.current_turn && t.player_slot === mySlot);
   }, [match, mySlot]);
+  const p1Submitted = useMemo(() => {
+    if (!match) return false;
+    return match.turns.some((t) => t.turn_number === match.current_turn && t.player_slot === 1);
+  }, [match]);
+  const p2Submitted = useMemo(() => {
+    if (!match) return false;
+    return match.turns.some((t) => t.turn_number === match.current_turn && t.player_slot === 2);
+  }, [match]);
 
   const canPlan = !!match && match.status === "active" && match.phase === "planning" && mySlot !== null && !mySubmitted && !animating;
 
@@ -109,11 +136,27 @@ export function MatchClient({ matchId }: Props) {
         const start = data.resolved_paths.start;
         await animateResolvedRound({ p1: start.p1, p2: start.p2 }, data.resolved_paths.p1, data.resolved_paths.p2);
         animatedTurnRef.current = data.resolved_paths.turn;
+      } else if (data.current_turn > prev.current_turn && !animatingRef.current) {
+        const resolvedTurn = data.current_turn - 1;
+        const p1Path = getTurnPath(data, resolvedTurn, 1);
+        const p2Path = getTurnPath(data, resolvedTurn, 2);
+        const startBoard = prev.board_state ?? DEFAULT_BOARD;
+        if (p1Path.length > 0 || p2Path.length > 0) {
+          await animateResolvedRound(startBoard, p1Path, p2Path);
+        }
+        setDisplayBoard(nextBoard);
+        setResolvedOverlay(null);
       } else if (!animatingRef.current) {
         setDisplayBoard(nextBoard);
       }
 
       if (prev && prev.phase === "resolving" && data.phase === "planning") {
+        setResolvedOverlay(null);
+        setPlannedPath([]);
+        setDraggingPath(false);
+        autoSubmittedRoundRef.current = null;
+      }
+      if (prev && data.current_turn !== prev.current_turn) {
         setResolvedOverlay(null);
         setPlannedPath([]);
         setDraggingPath(false);
@@ -197,7 +240,7 @@ export function MatchClient({ matchId }: Props) {
 
   useEffect(() => {
     if (!match || !canPlan || mySubmitted) return;
-    if (millisLeft > 200) return;
+    if (millisLeft > 2000) return;
     if (autoSubmittedRoundRef.current === match.current_turn) return;
     autoSubmittedRoundRef.current = match.current_turn;
     void submitPath(plannedPath);
@@ -298,6 +341,20 @@ export function MatchClient({ matchId }: Props) {
 
       <section className="mt-4 rounded-xl bg-white p-4 shadow-sm">
         <h2 className="font-semibold">Board 7x7</h2>
+        <div className="mt-2 grid max-w-md grid-cols-2 gap-2 text-sm">
+          <div className="flex items-center justify-between rounded border border-slate-200 bg-slate-50 px-3 py-2">
+            <span className="font-medium text-slate-700">Red (Slot 1)</span>
+            <span className={p1Submitted ? "font-semibold text-emerald-600" : "font-semibold text-slate-400"}>
+              {p1Submitted ? "✓ Ready" : "Waiting"}
+            </span>
+          </div>
+          <div className="flex items-center justify-between rounded border border-slate-200 bg-slate-50 px-3 py-2">
+            <span className="font-medium text-slate-700">Blue (Slot 2)</span>
+            <span className={p2Submitted ? "font-semibold text-emerald-600" : "font-semibold text-slate-400"}>
+              {p2Submitted ? "✓ Ready" : "Waiting"}
+            </span>
+          </div>
+        </div>
         <div className="relative mt-3" style={{ width: BOARD_PX, height: BOARD_PX }}>
           <div className="grid grid-cols-7 gap-1" style={{ width: BOARD_PX, height: BOARD_PX }}>
             {Array.from({ length: BOARD_SIZE }).map((_, row) =>
