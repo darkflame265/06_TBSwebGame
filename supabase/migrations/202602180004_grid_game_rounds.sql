@@ -100,7 +100,7 @@ begin
         'p2', jsonb_build_array(v_p2x, v_p2y)
       ),
       current_turn = current_turn + 1,
-      planning_ends_at = now() + interval '15 seconds'
+      planning_ends_at = now() + interval '10 seconds'
   where id = p_match_id
   returning * into v_match;
 
@@ -149,7 +149,7 @@ begin
   if v_match.board_state is null then
     update public.matches
     set board_state = public.initial_board_state(),
-        planning_ends_at = coalesce(planning_ends_at, now() + interval '15 seconds')
+        planning_ends_at = coalesce(planning_ends_at, now() + interval '10 seconds')
     where id = p_match_id
     returning * into v_match;
   end if;
@@ -220,7 +220,7 @@ begin
     v_match.board_state := public.initial_board_state();
     update public.matches
     set board_state = v_match.board_state,
-        planning_ends_at = coalesce(planning_ends_at, now() + interval '15 seconds')
+        planning_ends_at = coalesce(planning_ends_at, now() + interval '10 seconds')
     where id = p_match_id
     returning * into v_match;
   end if;
@@ -342,7 +342,7 @@ begin
       current_turn = 1,
       current_player_slot = 1,
       board_state = public.initial_board_state(),
-      planning_ends_at = now() + interval '15 seconds'
+      planning_ends_at = now() + interval '10 seconds'
   where id = v_match_id;
 
   return query select v_match_id;
@@ -434,7 +434,7 @@ begin
     1,
     1,
     public.initial_board_state(),
-    now() + interval '15 seconds'
+    now() + interval '10 seconds'
   )
   returning id into v_match_id;
 
