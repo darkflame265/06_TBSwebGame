@@ -1,0 +1,17 @@
+
+> tbs-1v1-mvp@0.1.0 dev
+> next dev
+
+   ▲ Next.js 15.5.12
+   - Local:        http://localhost:3001
+   - Network:      http://192.168.219.101:3001
+   - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 1414ms
+   Reload env: .env.local
+   Reload env: .env.local
+   Reload env: .env.local
+   Reload env: .env.local
+   Reload env: .env.local
+   Reload env: .env.local
