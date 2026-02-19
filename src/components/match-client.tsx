@@ -647,10 +647,10 @@ export function MatchClient({ matchId }: Props) {
                     : "REMATCH"}
             </button>
             {opponentRematchRequested && !myRematchRequested && !match.rematch_match_id && (
-              <p className="text-sm font-semibold text-indigo-700">?곷?諛⑹씠 ?ъ떆?⑹쓣 ?붿껌?섏??듬땲??</p>
+              <p className="text-sm font-semibold text-indigo-700">The opponent has requested a rematch.</p>
             )}
             {myRematchRequested && !opponentRematchRequested && !match.rematch_match_id && (
-              <p className="text-sm text-slate-600">?ъ떆???붿껌??蹂대깉?듬땲?? ?곷?瑜?湲곕떎由щ뒗 以?..</p>
+              <p className="text-sm text-slate-600">Rematch request sent. Waiting for opponent...</p>
             )}
             {match.ended_reason === "player_left" && match.left_by && me && match.left_by !== me && (
               <p className="text-sm font-semibold text-rose-700">The opponent has left the game.</p>
