@@ -41,6 +41,30 @@ const coordToPx = ([row, col]: Coord) => ({
 const heartsForHp = (hp: number) => [0, 1, 2].map((i) => i < hp);
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 
+const SwordIcon = () => (
+  <svg viewBox="0 0 64 64" className="h-16 w-16" aria-hidden>
+    <g fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M50 10L28 32" />
+      <path d="M54 6L46 14" />
+      <path d="M28 32L20 40" />
+      <path d="M20 40L12 34L6 40L12 46L6 52L12 58L18 52L24 58L30 52L24 46L30 40L24 34L20 40" />
+    </g>
+  </svg>
+);
+
+const RunIcon = () => (
+  <svg viewBox="0 0 64 64" className="h-16 w-16" aria-hidden>
+    <g fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="42" cy="10" r="5" />
+      <path d="M36 20L28 30L40 34L34 46" />
+      <path d="M28 30L18 24" />
+      <path d="M24 44L14 54" />
+      <path d="M40 34L50 42" />
+      <path d="M6 58H58" />
+    </g>
+  </svg>
+);
+
 const deriveCollisionAt = (start: DisplayBoard, p1Path: Coord[], p2Path: Coord[]): Coord | null => {
   const steps = Math.max(p1Path.length, p2Path.length);
   let p1 = start.p1;
@@ -437,6 +461,8 @@ export function MatchClient({ matchId }: Props) {
   const myPos: Coord | null = mySlot === 1 ? displayBoard.p1 : mySlot === 2 ? displayBoard.p2 : null;
   const currentEnd: Coord | null = myPos ? (plannedPath.length > 0 ? plannedPath[plannedPath.length - 1] : myPos) : null;
   const maxPoints = Math.min(match.current_turn, 10);
+  const usedPathPoints = plannedPath.length;
+  const remainingPathPoints = Math.max(0, maxPoints - usedPathPoints);
   const myColor = mySlot === 1 ? "Red" : mySlot === 2 ? "Blue" : "-";
   const p1IsAttacker = attackerSlot === 1;
   const p2IsAttacker = attackerSlot === 2;
@@ -563,7 +589,13 @@ export function MatchClient({ matchId }: Props) {
           <div className="col-span-2 rounded border border-slate-200 bg-slate-50 px-3 py-2">
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-1">
-                <span className={`text-xs text-slate-600 ${mySlot === 1 ? "font-bold" : "font-medium"}`}>Red HP:</span>
+                <span
+                  className={`rounded px-1.5 py-0.5 text-xs ${
+                    mySlot === 1 ? "bg-red-500 font-bold text-white" : "font-medium text-slate-600"
+                  }`}
+                >
+                  Red HP:
+                </span>
                 {heartsForHp(displayHp.p1).map((filled, idx) => (
                   <span
                     key={`p1-heart-${idx}-${shakingHeart?.nonce ?? 0}`}
@@ -575,8 +607,17 @@ export function MatchClient({ matchId }: Props) {
                   </span>
                 ))}
               </div>
+              <div className="rounded bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">
+                Path Points: {remainingPathPoints}/{maxPoints}
+              </div>
               <div className="flex items-center gap-1">
-                <span className={`text-xs text-slate-600 ${mySlot === 2 ? "font-bold" : "font-medium"}`}>Blue HP:</span>
+                <span
+                  className={`rounded px-1.5 py-0.5 text-xs ${
+                    mySlot === 2 ? "bg-blue-500 font-bold text-white" : "font-medium text-slate-600"
+                  }`}
+                >
+                  Blue HP:
+                </span>
                 {heartsForHp(displayHp.p2).map((filled, idx) => (
                   <span
                     key={`p2-heart-${idx}-${shakingHeart?.nonce ?? 0}`}
@@ -591,7 +632,8 @@ export function MatchClient({ matchId }: Props) {
             </div>
           </div>
         </div>
-        <div className="relative mt-3" style={{ width: BOARD_PX, height: BOARD_PX }}>
+        <div className="mt-3 flex items-start gap-6">
+          <div className="relative" style={{ width: BOARD_PX, height: BOARD_PX }}>
           <div className="grid grid-cols-7 gap-1" style={{ width: BOARD_PX, height: BOARD_PX }}>
             {Array.from({ length: BOARD_SIZE }).map((_, row) =>
               Array.from({ length: BOARD_SIZE }).map((__, col) => (
@@ -694,6 +736,14 @@ export function MatchClient({ matchId }: Props) {
               style={{ left: p2Px.left, top: p2Px.top, transition: `left ${STEP_ANIMATION_MS}ms linear, top ${STEP_ANIMATION_MS}ms linear` }}
             />
           )}
+          </div>
+          <div className="min-w-[120px] rounded-xl border border-slate-200 bg-white p-3 text-center text-slate-700 shadow-sm">
+            <p className="text-xs font-semibold text-slate-500">YOUR ROLE</p>
+            <div className={`mx-auto mt-2 flex h-20 w-20 items-center justify-center rounded-full ${myRole === "ATTACK" ? "bg-red-50 text-red-600" : "bg-blue-50 text-blue-600"}`}>
+              {myRole === "ATTACK" ? <SwordIcon /> : <RunIcon />}
+            </div>
+            <p className={`mt-2 text-sm font-bold ${myRole === "ATTACK" ? "text-red-600" : "text-blue-600"}`}>{myRole}</p>
+          </div>
         </div>
       </section>
 
