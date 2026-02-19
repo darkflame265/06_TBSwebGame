@@ -25,7 +25,7 @@ const STEP_ANIMATION_MS = 320;
 const PREVIEW_PATH_MS = 250;
 const RED_PATH_STROKE = 8;
 const BLUE_PATH_STROKE = 5;
-const SUBMIT_BUFFER_MS = 2000;
+const SUBMIT_BUFFER_MS = 3000;
 const PLANNING_TOTAL_MS = 10000;
 const PLANNING_UI_MS = PLANNING_TOTAL_MS - SUBMIT_BUFFER_MS;
 const CELL_SIZE = 56;
@@ -43,6 +43,20 @@ const coordToPx = ([row, col]: Coord) => ({
 });
 const heartsForHp = (hp: number) => [0, 1, 2].map((i) => i < hp);
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
+const pathEquals = (a: Coord[], b: Coord[]) =>
+  a.length === b.length && a.every((coord, idx) => sameCoord(coord, b[idx]));
+const parsePath = (value: unknown): Coord[] => {
+  if (!Array.isArray(value)) return [];
+  const out: Coord[] = [];
+  for (const item of value) {
+    if (!Array.isArray(item) || item.length !== 2) return out;
+    const row = item[0];
+    const col = item[1];
+    if (typeof row !== "number" || typeof col !== "number") return out;
+    out.push([row, col]);
+  }
+  return out;
+};
 
 const SwordIcon = () => (
   <svg viewBox="0 0 64 64" className="h-16 w-16" aria-hidden>
@@ -111,6 +125,7 @@ export function MatchClient({ matchId }: Props) {
   const [leaving, setLeaving] = useState(false);
   const [animating, setAnimating] = useState(false);
   const [draggingPath, setDraggingPath] = useState(false);
+  const [planningLocked, setPlanningLocked] = useState(false);
   const [nowMs, setNowMs] = useState(Date.now());
   const [frozenTimerMs, setFrozenTimerMs] = useState<number | null>(null);
   const [resolvedOverlay, setResolvedOverlay] = useState<{
@@ -132,6 +147,9 @@ export function MatchClient({ matchId }: Props) {
   const autoSubmittedRoundRef = useRef<number | null>(null);
   const latestMillisLeftRef = useRef(0);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const plannedPathRef = useRef<Coord[]>([]);
+  const lockedPathRef = useRef<Coord[] | null>(null);
+  const lastSyncTryAtRef = useRef(0);
 
   const mySlot = useMemo(() => {
     if (!match || !me) return null;
@@ -151,7 +169,14 @@ export function MatchClient({ matchId }: Props) {
     return match.turns.some((t) => t.turn_number === match.current_turn && t.player_slot === 2);
   }, [match]);
 
-  const canPlan = !!match && match.status === "active" && match.phase === "planning" && mySlot !== null && !mySubmitted && !animating;
+  const canPlan =
+    !!match &&
+    match.status === "active" &&
+    match.phase === "planning" &&
+    mySlot !== null &&
+    !mySubmitted &&
+    !animating &&
+    !planningLocked;
   const attackerSlot = match?.attacker_slot ?? 1;
   const myRole = mySlot ? (attackerSlot === mySlot ? "ATTACK" : "EVADE") : "-";
   const myRematchRequested = mySlot === 1 ? !!match?.rematch_p1_requested : mySlot === 2 ? !!match?.rematch_p2_requested : false;
@@ -301,12 +326,18 @@ export function MatchClient({ matchId }: Props) {
       if (prev && prev.phase === "resolving" && data.phase === "planning") {
         setResolvedOverlay(null);
         setPlannedPath([]);
+        plannedPathRef.current = [];
+        lockedPathRef.current = null;
+        setPlanningLocked(false);
         setDraggingPath(false);
         autoSubmittedRoundRef.current = null;
       }
       if (prev && data.current_turn !== prev.current_turn) {
         setResolvedOverlay(null);
         setPlannedPath([]);
+        plannedPathRef.current = [];
+        lockedPathRef.current = null;
+        setPlanningLocked(false);
         setDraggingPath(false);
         autoSubmittedRoundRef.current = null;
         setExplodedSlot(null);
@@ -338,6 +369,10 @@ export function MatchClient({ matchId }: Props) {
   }, [shakingHeart]);
 
   useEffect(() => {
+    plannedPathRef.current = plannedPath;
+  }, [plannedPath]);
+
+  useEffect(() => {
     const timer = setInterval(() => setNowMs(Date.now()), 33);
     return () => clearInterval(timer);
   }, []);
@@ -364,6 +399,11 @@ export function MatchClient({ matchId }: Props) {
       )
       .on(
         "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "turns", filter: `match_id=eq.${matchId}` },
+        () => loadMatch()
+      )
+      .on(
+        "postgres_changes",
         { event: "UPDATE", schema: "public", table: "matches", filter: `id=eq.${matchId}` },
         () => loadMatch()
       )
@@ -375,8 +415,9 @@ export function MatchClient({ matchId }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchId]);
 
-  const submitPath = async (pathToSubmit: Coord[]) => {
-    if (!match || !canPlan) return;
+  const submitPath = async (pathToSubmit: Coord[], options?: { force?: boolean }) => {
+    if (!match) return;
+    if (!options?.force && !canPlan) return;
     try {
       await apiPost(`/api/matches/${matchId}/turns`, { action: { path: pathToSubmit } });
       await loadMatch();
@@ -407,13 +448,36 @@ export function MatchClient({ matchId }: Props) {
   }, [millisLeft]);
 
   useEffect(() => {
-    if (!match || !canPlan || mySubmitted) return;
-    if (millisLeft > 2000) return;
+    if (!match || match.phase !== "planning" || match.status !== "active") return;
+    if (mySlot === null || mySubmitted || animating) return;
+    if (millisLeft > SUBMIT_BUFFER_MS) return;
     if (autoSubmittedRoundRef.current === match.current_turn) return;
+    // Lock at the start of buffer window and snapshot the final client path.
+    setPlanningLocked(true);
+    setDraggingPath(false);
     autoSubmittedRoundRef.current = match.current_turn;
-    void submitPath(plannedPath);
+    lockedPathRef.current = [...plannedPathRef.current];
+    lastSyncTryAtRef.current = Date.now();
+    void submitPath(lockedPathRef.current, { force: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [millisLeft, canPlan, mySubmitted, match?.current_turn, plannedPath]);
+  }, [millisLeft, match?.phase, match?.status, mySlot, mySubmitted, animating, match?.current_turn]);
+
+  useEffect(() => {
+    if (!match || !planningLocked || match.phase !== "planning" || match.status !== "active") return;
+    if (mySlot === null || millisLeft <= 0) return;
+    const locked = lockedPathRef.current;
+    if (!locked) return;
+
+    const myTurn = match.turns.find((t) => t.turn_number === match.current_turn && t.player_slot === mySlot);
+    const serverPath = parsePath((myTurn?.action_payload as { path?: unknown } | undefined)?.path);
+    if (pathEquals(serverPath, locked)) return;
+
+    const now = Date.now();
+    if (now - lastSyncTryAtRef.current < 250) return;
+    lastSyncTryAtRef.current = now;
+    void submitPath(locked, { force: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [match, planningLocked, millisLeft, mySlot]);
 
   useEffect(() => {
     if (!match?.rematch_match_id) return;
