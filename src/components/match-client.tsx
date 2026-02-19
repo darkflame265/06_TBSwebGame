@@ -160,15 +160,6 @@ export function MatchClient({ matchId }: Props) {
     if (!match || mySlot === null) return false;
     return match.turns.some((t) => t.turn_number === match.current_turn && t.player_slot === mySlot);
   }, [match, mySlot]);
-  const p1Submitted = useMemo(() => {
-    if (!match) return false;
-    return match.turns.some((t) => t.turn_number === match.current_turn && t.player_slot === 1);
-  }, [match]);
-  const p2Submitted = useMemo(() => {
-    if (!match) return false;
-    return match.turns.some((t) => t.turn_number === match.current_turn && t.player_slot === 2);
-  }, [match]);
-
   const canPlan =
     !!match &&
     match.status === "active" &&
@@ -423,10 +414,17 @@ export function MatchClient({ matchId }: Props) {
       await loadMatch();
     } catch (error) {
       const msg = error instanceof Error ? error.message : "Failed to submit path";
-      setMessage(msg);
-      if (msg.toLowerCase().includes("planning window closed") || msg.toLowerCase().includes("resolving")) {
+      const lowerMsg = msg.toLowerCase();
+      const benignPhaseTransition =
+        lowerMsg.includes("planning window closed") ||
+        lowerMsg.includes("round is resolving") ||
+        lowerMsg.includes("resolving");
+      if (benignPhaseTransition) {
+        setMessage(null);
         await loadMatch();
+        return;
       }
+      setMessage(msg);
     }
   };
 
@@ -442,6 +440,7 @@ export function MatchClient({ matchId }: Props) {
   const rawShownMillisLeft = frozenTimerMs ?? millisLeft;
   const shownMillisLeft =
     match?.phase === "planning" ? Math.max(0, rawShownMillisLeft - SUBMIT_BUFFER_MS) : rawShownMillisLeft;
+  const isMovingUi = animating || planningLocked || match?.phase === "resolving";
 
   useEffect(() => {
     latestMillisLeftRef.current = millisLeft;
@@ -535,7 +534,7 @@ export function MatchClient({ matchId }: Props) {
   const myColor = mySlot === 1 ? "Red" : mySlot === 2 ? "Blue" : "-";
   const p1IsAttacker = attackerSlot === 1;
   const p2IsAttacker = attackerSlot === 2;
-  const secondsLeft = (shownMillisLeft / 1000).toFixed(1);
+  const secondsLeft = ((isMovingUi ? 0 : shownMillisLeft) / 1000).toFixed(1);
   const timerBarBase = match.phase === "planning" ? PLANNING_UI_MS : PLANNING_TOTAL_MS;
   const isFinished = match.status === "finished";
   const iWon = isFinished && mySlot !== null && match.winner_slot === mySlot;
@@ -577,6 +576,8 @@ export function MatchClient({ matchId }: Props) {
   const p1Px = coordToPx(displayBoard.p1);
   const p2Px = coordToPx(displayBoard.p2);
   const impactPx = impactCoord ? coordToPx(impactCoord) : null;
+  const p1UserId = match.players.find((p) => p.slot === 1)?.user_id ?? "-";
+  const p2UserId = match.players.find((p) => p.slot === 2)?.user_id ?? "-";
 
   return (
     <main className="mx-auto min-h-screen max-w-5xl p-6">
@@ -605,10 +606,10 @@ export function MatchClient({ matchId }: Props) {
           <p className="text-sm text-slate-700">
             Status: {match.status} | Phase: {match.phase} | Round: {match.current_turn} | Piece: {myColor} | Role: {myRole} | Max path points: {maxPoints}
           </p>
-          <p className="font-mono text-sm font-semibold text-slate-900">{animating ? "moving..." : `${match.phase} timer: ${secondsLeft}s`}</p>
+          <p className="font-mono text-sm font-semibold text-slate-900">{isMovingUi ? "moving..." : `${match.phase} timer: ${secondsLeft}s`}</p>
         </div>
         <div className="mt-2 h-2 w-full overflow-hidden rounded bg-slate-200">
-          <div className="h-full bg-emerald-500" style={{ width: `${Math.max(0, Math.min(100, (shownMillisLeft / timerBarBase) * 100))}%` }} />
+          <div className="h-full bg-emerald-500" style={{ width: `${Math.max(0, Math.min(100, ((isMovingUi ? 0 : shownMillisLeft) / timerBarBase) * 100))}%` }} />
         </div>
       </div>
 
@@ -648,13 +649,15 @@ export function MatchClient({ matchId }: Props) {
       <section className="mt-4 rounded-xl bg-white p-4 shadow-sm">
         <h2 className="font-semibold">Board 7x7</h2>
         <div className="mt-2 grid max-w-md grid-cols-2 gap-2 text-sm">
-          <div className="flex items-center justify-between rounded border border-slate-200 bg-slate-50 px-3 py-2">
-            <span className="font-medium text-slate-700">Red (Slot 1){p1IsAttacker ? " - ATTACK" : " - EVADE"}</span>
-            <span className={p1Submitted ? "font-semibold text-emerald-600" : "font-semibold text-slate-400"}>{p1Submitted ? "Ready" : "Waiting"}</span>
+          <div className="min-w-0 rounded border border-slate-200 bg-slate-50 px-3 py-2">
+            <p className="truncate font-medium text-slate-700" title={p1UserId}>
+              {mySlot === 1 ? `(Me) ${p1UserId}` : p1UserId}
+            </p>
           </div>
-          <div className="flex items-center justify-between rounded border border-slate-200 bg-slate-50 px-3 py-2">
-            <span className="font-medium text-slate-700">Blue (Slot 2){p2IsAttacker ? " - ATTACK" : " - EVADE"}</span>
-            <span className={p2Submitted ? "font-semibold text-emerald-600" : "font-semibold text-slate-400"}>{p2Submitted ? "Ready" : "Waiting"}</span>
+          <div className="min-w-0 rounded border border-slate-200 bg-slate-50 px-3 py-2">
+            <p className="truncate font-medium text-slate-700" title={p2UserId}>
+              {mySlot === 2 ? `(Me) ${p2UserId}` : p2UserId}
+            </p>
           </div>
           <div className="col-span-2 rounded border border-slate-200 bg-slate-50 px-3 py-2">
             <div className="flex items-center justify-between gap-4">
@@ -814,39 +817,6 @@ export function MatchClient({ matchId }: Props) {
             </div>
             <p className={`mt-2 text-sm font-bold ${myRole === "ATTACK" ? "text-red-600" : "text-blue-600"}`}>{myRole}</p>
           </div>
-        </div>
-      </section>
-
-      <section className="mt-4 rounded-xl bg-white p-4 shadow-sm">
-        <h2 className="font-semibold">Path Planning</h2>
-        <p className="mt-1 text-sm text-slate-600">
-          {match.phase === "resolving" ? "Resolving round..." : mySubmitted ? "Path submitted." : "Drag from your piece (or path end) to set route."}
-        </p>
-        <div className="mt-2 flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => submitPath(plannedPath)}
-            disabled={!canPlan}
-            className="rounded-lg bg-slate-900 px-4 py-2 text-white disabled:cursor-not-allowed disabled:bg-slate-400"
-          >
-            Submit path
-          </button>
-          <button
-            type="button"
-            onClick={() => setPlannedPath((prev) => prev.slice(0, -1))}
-            disabled={!canPlan || plannedPath.length === 0}
-            className="rounded-lg bg-slate-700 px-4 py-2 text-white disabled:cursor-not-allowed disabled:bg-slate-400"
-          >
-            Undo
-          </button>
-          <button
-            type="button"
-            onClick={() => setPlannedPath([])}
-            disabled={!canPlan || plannedPath.length === 0}
-            className="rounded-lg bg-slate-500 px-4 py-2 text-white disabled:cursor-not-allowed disabled:bg-slate-400"
-          >
-            Clear
-          </button>
         </div>
       </section>
 
