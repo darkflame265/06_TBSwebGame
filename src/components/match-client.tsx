@@ -141,6 +141,8 @@ export function MatchClient({ matchId }: Props) {
   const [explodedSlot, setExplodedSlot] = useState<1 | 2 | null>(null);
   const [requestingRematch, setRequestingRematch] = useState(false);
   const [openProfileSlot, setOpenProfileSlot] = useState<1 | 2 | null>(null);
+  const [onlineUserIds, setOnlineUserIds] = useState<string[]>([]);
+  const [presenceReady, setPresenceReady] = useState(false);
 
   const prevMatchRef = useRef<MatchResponse | null>(null);
   const animatingRef = useRef(false);
@@ -173,6 +175,11 @@ export function MatchClient({ matchId }: Props) {
   const myRole = mySlot ? (attackerSlot === mySlot ? "ATTACK" : "EVADE") : "-";
   const myRematchRequested = mySlot === 1 ? !!match?.rematch_p1_requested : mySlot === 2 ? !!match?.rematch_p2_requested : false;
   const opponentRematchRequested = mySlot === 1 ? !!match?.rematch_p2_requested : mySlot === 2 ? !!match?.rematch_p1_requested : false;
+  const opponentUserId = useMemo(() => {
+    if (!match || !me) return null;
+    return match.players.find((p) => p.user_id !== me)?.user_id ?? null;
+  }, [match, me]);
+  const opponentOnline = !!opponentUserId && onlineUserIds.includes(opponentUserId);
 
   const playHitSfx = () => {
     if (muted) return;
@@ -407,6 +414,42 @@ export function MatchClient({ matchId }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchId]);
 
+  useEffect(() => {
+    if (!me) return;
+    const presenceChannel = supabase.channel(`match-presence-${matchId}`, {
+      config: { presence: { key: me } }
+    });
+
+    const syncPresence = () => {
+      const state = presenceChannel.presenceState<{ userId: string }>();
+      const ids = new Set<string>();
+      Object.values(state).forEach((entries) => {
+        entries.forEach((entry) => {
+          if (entry.userId) ids.add(entry.userId);
+        });
+      });
+      setOnlineUserIds(Array.from(ids));
+      setPresenceReady(true);
+    };
+
+    presenceChannel
+      .on("presence", { event: "sync" }, syncPresence)
+      .on("presence", { event: "join" }, syncPresence)
+      .on("presence", { event: "leave" }, syncPresence)
+      .subscribe(async (status) => {
+        if (status === "SUBSCRIBED") {
+          await presenceChannel.track({ userId: me });
+        }
+      });
+
+    return () => {
+      void presenceChannel.untrack();
+      supabase.removeChannel(presenceChannel);
+      setPresenceReady(false);
+      setOnlineUserIds([]);
+    };
+  }, [matchId, me, supabase]);
+
   const submitPath = async (pathToSubmit: Coord[], options?: { force?: boolean }) => {
     if (!match) return;
     if (!options?.force && !canPlan) return;
@@ -492,6 +535,10 @@ export function MatchClient({ matchId }: Props) {
 
   const requestRematch = async () => {
     if (!match || match.status !== "finished" || requestingRematch) return;
+    if (!opponentOnline) {
+      setMessage("The opponent is offline. Rematch is unavailable.");
+      return;
+    }
     setRequestingRematch(true);
     try {
       const res = await apiPost<{ status: "waiting" | "started"; match_id?: string }>(`/api/matches/${matchId}/rematch`);
@@ -509,10 +556,6 @@ export function MatchClient({ matchId }: Props) {
 
   const leaveMatch = async () => {
     setMessage(null);
-    if (match?.status === "finished") {
-      router.push("/");
-      return;
-    }
     setLeaving(true);
     try {
       await apiPost(`/api/matches/${matchId}/leave`);
@@ -635,7 +678,7 @@ export function MatchClient({ matchId }: Props) {
             <button
               type="button"
               onClick={requestRematch}
-              disabled={requestingRematch || myRematchRequested || !!match.rematch_match_id}
+              disabled={requestingRematch || myRematchRequested || !!match.rematch_match_id || !opponentOnline}
               className="rounded-lg bg-indigo-700 px-4 py-2 text-white disabled:cursor-not-allowed disabled:bg-slate-400"
             >
               {match.rematch_match_id
@@ -652,7 +695,8 @@ export function MatchClient({ matchId }: Props) {
             {myRematchRequested && !opponentRematchRequested && !match.rematch_match_id && (
               <p className="text-sm text-slate-600">Rematch request sent. Waiting for opponent...</p>
             )}
-            {match.ended_reason === "player_left" && match.left_by && me && match.left_by !== me && (
+            {((match.ended_reason === "player_left" && match.left_by && me && match.left_by !== me) ||
+              (presenceReady && !!opponentUserId && !opponentOnline)) && (
               <p className="text-sm font-semibold text-rose-700">The opponent has left the game.</p>
             )}
           </div>
