@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -423,6 +423,7 @@ export function MatchClient({ matchId }: Props) {
         lowerMsg.includes("planning window closed") ||
         lowerMsg.includes("round is resolving") ||
         lowerMsg.includes("stale round") ||
+        lowerMsg.includes("match is not active") ||
         lowerMsg.includes("resolving");
       if (benignPhaseTransition) {
         setMessage(null);
@@ -646,10 +647,13 @@ export function MatchClient({ matchId }: Props) {
                     : "REMATCH"}
             </button>
             {opponentRematchRequested && !myRematchRequested && !match.rematch_match_id && (
-              <p className="text-sm font-semibold text-indigo-700">상대방이 재시합을 요청하였습니다.</p>
+              <p className="text-sm font-semibold text-indigo-700">?곷?諛⑹씠 ?ъ떆?⑹쓣 ?붿껌?섏??듬땲??</p>
             )}
             {myRematchRequested && !opponentRematchRequested && !match.rematch_match_id && (
-              <p className="text-sm text-slate-600">재시합 요청을 보냈습니다. 상대를 기다리는 중...</p>
+              <p className="text-sm text-slate-600">?ъ떆???붿껌??蹂대깉?듬땲?? ?곷?瑜?湲곕떎由щ뒗 以?..</p>
+            )}
+            {match.ended_reason === "player_left" && match.left_by && me && match.left_by !== me && (
+              <p className="text-sm font-semibold text-rose-700">The opponent has left the game.</p>
             )}
           </div>
         </div>
@@ -946,3 +950,5 @@ export function MatchClient({ matchId }: Props) {
     </main>
   );
 }
+
+
