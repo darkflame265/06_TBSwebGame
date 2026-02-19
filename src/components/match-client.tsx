@@ -25,6 +25,9 @@ const STEP_ANIMATION_MS = 320;
 const PREVIEW_PATH_MS = 250;
 const RED_PATH_STROKE = 8;
 const BLUE_PATH_STROKE = 5;
+const SUBMIT_BUFFER_MS = 2000;
+const PLANNING_TOTAL_MS = 10000;
+const PLANNING_UI_MS = PLANNING_TOTAL_MS - SUBMIT_BUFFER_MS;
 const CELL_SIZE = 56;
 const CELL_GAP = 4;
 const BOARD_PX = BOARD_SIZE * CELL_SIZE + (BOARD_SIZE - 1) * CELL_GAP;
@@ -395,7 +398,9 @@ export function MatchClient({ matchId }: Props) {
         ? new Date(match.resolution_ends_at).getTime()
         : nowMs;
   const millisLeft = Math.max(0, deadlineMs - nowMs);
-  const shownMillisLeft = frozenTimerMs ?? millisLeft;
+  const rawShownMillisLeft = frozenTimerMs ?? millisLeft;
+  const shownMillisLeft =
+    match?.phase === "planning" ? Math.max(0, rawShownMillisLeft - SUBMIT_BUFFER_MS) : rawShownMillisLeft;
 
   useEffect(() => {
     latestMillisLeftRef.current = millisLeft;
@@ -467,6 +472,7 @@ export function MatchClient({ matchId }: Props) {
   const p1IsAttacker = attackerSlot === 1;
   const p2IsAttacker = attackerSlot === 2;
   const secondsLeft = (shownMillisLeft / 1000).toFixed(1);
+  const timerBarBase = match.phase === "planning" ? PLANNING_UI_MS : PLANNING_TOTAL_MS;
   const isFinished = match.status === "finished";
   const iWon = isFinished && mySlot !== null && match.winner_slot === mySlot;
   const iLost = isFinished && mySlot !== null && match.winner_slot !== null && match.winner_slot !== mySlot;
@@ -538,7 +544,7 @@ export function MatchClient({ matchId }: Props) {
           <p className="font-mono text-sm font-semibold text-slate-900">{animating ? "moving..." : `${match.phase} timer: ${secondsLeft}s`}</p>
         </div>
         <div className="mt-2 h-2 w-full overflow-hidden rounded bg-slate-200">
-          <div className="h-full bg-emerald-500" style={{ width: `${Math.max(0, Math.min(100, (shownMillisLeft / 10000) * 100))}%` }} />
+          <div className="h-full bg-emerald-500" style={{ width: `${Math.max(0, Math.min(100, (shownMillisLeft / timerBarBase) * 100))}%` }} />
         </div>
       </div>
 
