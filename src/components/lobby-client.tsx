@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getBrowserSupabaseClient } from "@/lib/supabase/browser";
-import { apiPost } from "@/lib/client-api";
+import { apiGet, apiPost } from "@/lib/client-api";
 
 type RoomCreateResponse = {
   match_id: string;
@@ -20,6 +20,10 @@ type MatchmakingResponse = {
   ticket_id?: string;
 };
 
+type ProfileResponse = {
+  nickname: string | null;
+};
+
 export function LobbyClient() {
   const router = useRouter();
   const supabase = getBrowserSupabaseClient();
@@ -28,6 +32,9 @@ export function LobbyClient() {
   const [createdRoom, setCreatedRoom] = useState<RoomCreateResponse | null>(null);
   const [queueing, setQueueing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [nicknameInput, setNicknameInput] = useState("");
+  const [savedNickname, setSavedNickname] = useState<string | null>(null);
+  const [savingNickname, setSavingNickname] = useState(false);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const queueTicketRef = useRef<string | null>(null);
 
@@ -36,6 +43,24 @@ export function LobbyClient() {
       setUserId(data.user?.id ?? null);
     });
   }, [supabase]);
+
+  useEffect(() => {
+    const loadProfile = async () => {
+      if (!userId) {
+        setSavedNickname(null);
+        setNicknameInput("");
+        return;
+      }
+      try {
+        const data = await apiGet<ProfileResponse>("/api/profile");
+        setSavedNickname(data.nickname);
+        setNicknameInput(data.nickname ?? "");
+      } catch {
+        // ignore initial profile load errors in lobby
+      }
+    };
+    loadProfile();
+  }, [userId]);
 
   useEffect(() => {
     return () => {
@@ -126,6 +151,22 @@ export function LobbyClient() {
     }, 2500);
   };
 
+  const saveNickname = async () => {
+    setMessage(null);
+    if (!userId) return;
+    setSavingNickname(true);
+    try {
+      const data = await apiPost<ProfileResponse>("/api/profile", {
+        nickname: nicknameInput
+      });
+      setSavedNickname(data.nickname);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to save nickname");
+    } finally {
+      setSavingNickname(false);
+    }
+  };
+
   return (
     <main className="mx-auto min-h-screen max-w-3xl p-6">
       <h1 className="text-3xl font-bold">1v1 TBS Lobby</h1>
@@ -134,7 +175,27 @@ export function LobbyClient() {
       <section className="mt-6 rounded-xl bg-white p-4 shadow-sm">
         <h2 className="font-semibold">1) Guest Login</h2>
         {userId ? (
-          <p className="mt-2 text-sm text-emerald-700">Signed in: {userId}</p>
+          <>
+            <p className="mt-2 text-sm text-emerald-700">Signed in: {userId}</p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <input
+                value={nicknameInput}
+                onChange={(e) => setNicknameInput(e.target.value)}
+                placeholder="Nickname (2-24 chars)"
+                maxLength={24}
+                className="min-w-[220px] rounded-lg border border-slate-300 px-3 py-2"
+              />
+              <button
+                type="button"
+                onClick={saveNickname}
+                disabled={savingNickname || nicknameInput.trim().length < 2}
+                className="rounded-lg bg-slate-900 px-4 py-2 text-white disabled:cursor-not-allowed disabled:bg-slate-400"
+              >
+                {savingNickname ? "Saving..." : "Confirm"}
+              </button>
+            </div>
+            {savedNickname && <p className="mt-2 text-xs text-slate-600">Current nickname: {savedNickname}</p>}
+          </>
         ) : (
           <button
             onClick={signInGuest}

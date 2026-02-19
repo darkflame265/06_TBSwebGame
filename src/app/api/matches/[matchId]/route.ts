@@ -63,9 +63,31 @@ export async function GET(request: Request, context: Context) {
     return jsonError(turnsResult.error.message, 400);
   }
 
+  const playerRows = playersResult.data ?? [];
+  const playerIds = playerRows.map((p) => p.user_id);
+  const nicknameMap = new Map<string, string | null>();
+
+  if (playerIds.length > 0) {
+    const { data: profileRows, error: profilesError } = await client
+      .from("user_profiles")
+      .select("user_id,nickname")
+      .in("user_id", playerIds);
+
+    if (profilesError) {
+      return jsonError(profilesError.message, 400);
+    }
+
+    for (const profile of profileRows ?? []) {
+      nicknameMap.set(profile.user_id, profile.nickname ?? null);
+    }
+  }
+
   return NextResponse.json({
     ...matchResult.data,
-    players: playersResult.data ?? [],
+    players: playerRows.map((player) => ({
+      ...player,
+      nickname: nicknameMap.get(player.user_id) ?? null
+    })),
     turns: turnsResult.data ?? []
   });
 }

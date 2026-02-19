@@ -42,6 +42,7 @@ export type MatchResponse = {
   created_at: string;
   players: Array<{
     user_id: string;
+    nickname: string | null;
     slot: number;
     joined_at: string;
   }>;

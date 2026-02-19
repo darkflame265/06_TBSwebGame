@@ -140,6 +140,7 @@ export function MatchClient({ matchId }: Props) {
   const [displayHp, setDisplayHp] = useState<{ p1: number; p2: number }>({ p1: 3, p2: 3 });
   const [explodedSlot, setExplodedSlot] = useState<1 | 2 | null>(null);
   const [requestingRematch, setRequestingRematch] = useState(false);
+  const [openProfileSlot, setOpenProfileSlot] = useState<1 | 2 | null>(null);
 
   const prevMatchRef = useRef<MatchResponse | null>(null);
   const animatingRef = useRef(false);
@@ -576,8 +577,12 @@ export function MatchClient({ matchId }: Props) {
   const p1Px = coordToPx(displayBoard.p1);
   const p2Px = coordToPx(displayBoard.p2);
   const impactPx = impactCoord ? coordToPx(impactCoord) : null;
-  const p1UserId = match.players.find((p) => p.slot === 1)?.user_id ?? "-";
-  const p2UserId = match.players.find((p) => p.slot === 2)?.user_id ?? "-";
+  const p1Player = match.players.find((p) => p.slot === 1);
+  const p2Player = match.players.find((p) => p.slot === 2);
+  const p1UserId = p1Player?.user_id ?? "-";
+  const p2UserId = p2Player?.user_id ?? "-";
+  const p1Name = p1Player?.nickname?.trim() || p1UserId;
+  const p2Name = p2Player?.nickname?.trim() || p2UserId;
 
   return (
     <main className="mx-auto min-h-screen max-w-5xl p-6">
@@ -649,15 +654,35 @@ export function MatchClient({ matchId }: Props) {
       <section className="mt-4 rounded-xl bg-white p-4 shadow-sm">
         <h2 className="font-semibold">Board 7x7</h2>
         <div className="mt-2 grid max-w-md grid-cols-2 gap-2 text-sm">
-          <div className="min-w-0 rounded border border-slate-200 bg-slate-50 px-3 py-2">
-            <p className="truncate font-medium text-slate-700" title={p1UserId}>
-              {mySlot === 1 ? `(Me) ${p1UserId}` : p1UserId}
-            </p>
+          <div className="relative min-w-0">
+            <button
+              type="button"
+              onClick={() => setOpenProfileSlot((prev) => (prev === 1 ? null : 1))}
+              className="w-full rounded border border-slate-200 bg-slate-50 px-3 py-2 text-left"
+              title={p1Name}
+            >
+              <p className="truncate font-medium text-slate-700">{mySlot === 1 ? `(Me) ${p1Name}` : p1Name}</p>
+            </button>
+            {openProfileSlot === 1 && (
+              <div className="absolute left-0 right-0 z-20 mt-1 rounded border border-slate-200 bg-white p-2 text-xs text-slate-700 shadow">
+                Guest ID: <span className="font-mono">{p1UserId}</span>
+              </div>
+            )}
           </div>
-          <div className="min-w-0 rounded border border-slate-200 bg-slate-50 px-3 py-2">
-            <p className="truncate font-medium text-slate-700" title={p2UserId}>
-              {mySlot === 2 ? `(Me) ${p2UserId}` : p2UserId}
-            </p>
+          <div className="relative min-w-0">
+            <button
+              type="button"
+              onClick={() => setOpenProfileSlot((prev) => (prev === 2 ? null : 2))}
+              className="w-full rounded border border-slate-200 bg-slate-50 px-3 py-2 text-left"
+              title={p2Name}
+            >
+              <p className="truncate font-medium text-slate-700">{mySlot === 2 ? `(Me) ${p2Name}` : p2Name}</p>
+            </button>
+            {openProfileSlot === 2 && (
+              <div className="absolute left-0 right-0 z-20 mt-1 rounded border border-slate-200 bg-white p-2 text-xs text-slate-700 shadow">
+                Guest ID: <span className="font-mono">{p2UserId}</span>
+              </div>
+            )}
           </div>
           <div className="col-span-2 rounded border border-slate-200 bg-slate-50 px-3 py-2">
             <div className="flex items-center justify-between gap-4">
