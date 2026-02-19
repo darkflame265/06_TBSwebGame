@@ -411,7 +411,10 @@ export function MatchClient({ matchId }: Props) {
     if (!match) return;
     if (!options?.force && !canPlan) return;
     try {
-      await apiPost(`/api/matches/${matchId}/turns`, { action: { path: pathToSubmit } });
+      await apiPost(`/api/matches/${matchId}/turns`, {
+        round: match.current_turn,
+        action: { path: pathToSubmit }
+      });
       await loadMatch();
     } catch (error) {
       const msg = error instanceof Error ? error.message : "Failed to submit path";

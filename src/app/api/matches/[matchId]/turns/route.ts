@@ -7,6 +7,7 @@ const paramsSchema = z.object({
 });
 
 const bodySchema = z.object({
+  round: z.number().int().positive(),
   action: z.record(z.any())
 });
 
@@ -33,6 +34,7 @@ export async function POST(request: Request, context: Context) {
 
   const { data, error: rpcError } = await client.rpc("submit_turn", {
     p_match_id: parsedParams.data.matchId,
+    p_round: body.data.round,
     p_action: body.data.action
   });
 
