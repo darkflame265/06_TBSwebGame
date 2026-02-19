@@ -25,10 +25,16 @@ declare
   v_p1_col integer;
   v_p2_row integer;
   v_p2_col integer;
+  v_prev_p1_row integer;
+  v_prev_p1_col integer;
+  v_prev_p2_row integer;
+  v_prev_p2_col integer;
   v_steps integer;
   v_collision boolean := false;
-  v_collision_row integer := null;
-  v_collision_col integer := null;
+  v_collision_row numeric := null;
+  v_collision_col numeric := null;
+  v_collision_step integer := null;
+  v_collision_t numeric := null;
   v_hit_slot smallint := null;
   v_next_p1_hp integer;
   v_next_p2_hp integer;
@@ -86,6 +92,11 @@ begin
   v_steps := greatest(jsonb_array_length(v_path1), jsonb_array_length(v_path2));
   if v_steps > 0 then
     for i in 0..(v_steps - 1) loop
+      v_prev_p1_row := v_p1_row;
+      v_prev_p1_col := v_p1_col;
+      v_prev_p2_row := v_p2_row;
+      v_prev_p2_col := v_p2_col;
+
       if i < jsonb_array_length(v_path1) then
         v_p1_row := (v_path1 -> i ->> 0)::integer;
         v_p1_col := (v_path1 -> i ->> 1)::integer;
@@ -94,11 +105,22 @@ begin
         v_p2_row := (v_path2 -> i ->> 0)::integer;
         v_p2_col := (v_path2 -> i ->> 1)::integer;
       end if;
-      if v_p1_row = v_p2_row and v_p1_col = v_p2_col then
-        v_collision := true;
-        if v_collision_row is null then
-          v_collision_row := v_p1_row;
-          v_collision_col := v_p1_col;
+      if not v_collision then
+        if v_p1_row = v_p2_row and v_p1_col = v_p2_col then
+          v_collision := true;
+          v_collision_row := v_p1_row::numeric;
+          v_collision_col := v_p1_col::numeric;
+          v_collision_step := i;
+          v_collision_t := 1;
+        elsif v_prev_p1_row = v_p2_row
+          and v_prev_p1_col = v_p2_col
+          and v_prev_p2_row = v_p1_row
+          and v_prev_p2_col = v_p1_col then
+          v_collision := true;
+          v_collision_row := (v_prev_p1_row + v_p1_row)::numeric / 2;
+          v_collision_col := (v_prev_p1_col + v_p1_col)::numeric / 2;
+          v_collision_step := i;
+          v_collision_t := 0.5;
         end if;
       end if;
     end loop;
@@ -155,6 +177,8 @@ begin
         'p2', v_path2,
         'collision', v_collision,
         'hit_slot', v_hit_slot,
+        'collision_step', v_collision_step,
+        'collision_t', v_collision_t,
         'collision_at',
           case
             when v_collision_row is null then null

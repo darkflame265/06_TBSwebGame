@@ -16,6 +16,8 @@ type CollisionMeta = {
   collision: boolean;
   hitSlot: 1 | 2 | null;
   collisionAt: Coord | null;
+  collisionStep: number | null;
+  collisionT: number | null;
 };
 
 const BOARD_SIZE = 7;
@@ -35,6 +37,7 @@ const coordToPx = ([row, col]: Coord) => ({
   top: row * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2
 });
 const heartsForHp = (hp: number) => [0, 1, 2].map((i) => i < hp);
+const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 
 const deriveCollisionAt = (start: DisplayBoard, p1Path: Coord[], p2Path: Coord[]): Coord | null => {
   const steps = Math.max(p1Path.length, p2Path.length);
@@ -44,6 +47,25 @@ const deriveCollisionAt = (start: DisplayBoard, p1Path: Coord[], p2Path: Coord[]
     if (i < p1Path.length) p1 = p1Path[i];
     if (i < p2Path.length) p2 = p2Path[i];
     if (sameCoord(p1, p2)) return p1;
+  }
+  return null;
+};
+const progressOnSegment = (from: Coord, to: Coord, point: Coord): number | null => {
+  const eps = 0.0001;
+  if (sameCoord(from, to)) return null;
+  if (Math.abs(from[0] - to[0]) < eps) {
+    if (Math.abs(point[0] - from[0]) > eps) return null;
+    const den = to[1] - from[1];
+    if (Math.abs(den) < eps) return null;
+    const t = (point[1] - from[1]) / den;
+    return t >= -eps && t <= 1 + eps ? clamp01(t) : null;
+  }
+  if (Math.abs(from[1] - to[1]) < eps) {
+    if (Math.abs(point[1] - from[1]) > eps) return null;
+    const den = to[0] - from[0];
+    if (Math.abs(den) < eps) return null;
+    const t = (point[0] - from[0]) / den;
+    return t >= -eps && t <= 1 + eps ? clamp01(t) : null;
   }
   return null;
 };
@@ -71,6 +93,7 @@ export function MatchClient({ matchId }: Props) {
   const [impactCoord, setImpactCoord] = useState<Coord | null>(null);
   const [hitFlashSlot, setHitFlashSlot] = useState<1 | 2 | null>(null);
   const [shakingHeart, setShakingHeart] = useState<{ slot: 1 | 2; index: number; nonce: number } | null>(null);
+  const [displayHp, setDisplayHp] = useState<{ p1: number; p2: number }>({ p1: 3, p2: 3 });
 
   const prevMatchRef = useRef<MatchResponse | null>(null);
   const animatingRef = useRef(false);
@@ -140,7 +163,7 @@ export function MatchClient({ matchId }: Props) {
     setFrozenTimerMs(Math.max(0, latestMillisLeftRef.current));
     animatingRef.current = true;
     setAnimating(true);
-    triggerImpactFx(meta);
+    let didTriggerHit = false;
 
     let p1 = start.p1;
     let p2 = start.p2;
@@ -156,10 +179,45 @@ export function MatchClient({ matchId }: Props) {
     await sleep(PREVIEW_PATH_MS);
 
     for (let i = 0; i < steps; i += 1) {
+      const prevP1 = p1;
+      const prevP2 = p2;
       if (i < p1Path.length) p1 = p1Path[i];
       if (i < p2Path.length) p2 = p2Path[i];
       setDisplayBoard({ p1, p2 });
-      await sleep(STEP_ANIMATION_MS);
+      if (!didTriggerHit && meta.collision && meta.collisionAt && meta.collisionStep === i) {
+        didTriggerHit = true;
+        let collisionT = meta.collisionT ?? null;
+        if (collisionT === null) {
+          const t1 = progressOnSegment(prevP1, p1, meta.collisionAt);
+          const t2 = progressOnSegment(prevP2, p2, meta.collisionAt);
+          if (t1 !== null && t2 !== null) {
+            collisionT = clamp01((t1 + t2) / 2);
+          } else if (sameCoord(p1, meta.collisionAt) && sameCoord(p2, meta.collisionAt)) {
+            collisionT = 1;
+          } else {
+            collisionT = 1;
+          }
+        }
+        const delay = Math.round(STEP_ANIMATION_MS * clamp01(collisionT));
+        if (delay > 0) await sleep(delay);
+        triggerImpactFx(meta);
+        if (meta.hitSlot === 1) {
+          setDisplayHp((hp) => {
+            const next = Math.max(hp.p1 - 1, 0);
+            setShakingHeart({ slot: 1, index: next, nonce: Date.now() });
+            return { ...hp, p1: next };
+          });
+        } else if (meta.hitSlot === 2) {
+          setDisplayHp((hp) => {
+            const next = Math.max(hp.p2 - 1, 0);
+            setShakingHeart({ slot: 2, index: next, nonce: Date.now() });
+            return { ...hp, p2: next };
+          });
+        }
+        if (delay < STEP_ANIMATION_MS) await sleep(STEP_ANIMATION_MS - delay);
+      } else {
+        await sleep(STEP_ANIMATION_MS);
+      }
     }
 
     setAnimating(false);
@@ -173,13 +231,9 @@ export function MatchClient({ matchId }: Props) {
       const nextBoard = data.board_state ?? DEFAULT_BOARD;
       const prev = prevMatchRef.current;
 
-      if (prev) {
-        if (data.p1_hp < prev.p1_hp) setShakingHeart({ slot: 1, index: data.p1_hp, nonce: Date.now() });
-        if (data.p2_hp < prev.p2_hp) setShakingHeart({ slot: 2, index: data.p2_hp, nonce: Date.now() });
-      }
-
       if (!prev) {
         setDisplayBoard(nextBoard);
+        setDisplayHp({ p1: data.p1_hp, p2: data.p2_hp });
       } else if (
         data.phase === "resolving" &&
         data.resolved_paths &&
@@ -197,12 +251,15 @@ export function MatchClient({ matchId }: Props) {
           {
             collision: !!data.resolved_paths.collision,
             hitSlot: data.resolved_paths.hit_slot ?? null,
-            collisionAt
+            collisionAt,
+            collisionStep: data.resolved_paths.collision_step ?? null,
+            collisionT: data.resolved_paths.collision_t ?? null
           }
         );
         animatedTurnRef.current = data.resolved_paths.turn;
       } else if (!animatingRef.current) {
         setDisplayBoard(nextBoard);
+        setDisplayHp({ p1: data.p1_hp, p2: data.p2_hp });
       }
 
       if (prev && prev.phase === "resolving" && data.phase === "planning") {
@@ -438,7 +495,7 @@ export function MatchClient({ matchId }: Props) {
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-1">
                 <span className="text-xs font-medium text-slate-600">Red HP:</span>
-                {heartsForHp(match.p1_hp).map((filled, idx) => (
+                {heartsForHp(displayHp.p1).map((filled, idx) => (
                   <span
                     key={`p1-heart-${idx}-${shakingHeart?.nonce ?? 0}`}
                     className={`text-lg text-rose-500 ${filled ? "opacity-100" : "opacity-25"} ${
@@ -451,7 +508,7 @@ export function MatchClient({ matchId }: Props) {
               </div>
               <div className="flex items-center gap-1">
                 <span className="text-xs font-medium text-slate-600">Blue HP:</span>
-                {heartsForHp(match.p2_hp).map((filled, idx) => (
+                {heartsForHp(displayHp.p2).map((filled, idx) => (
                   <span
                     key={`p2-heart-${idx}-${shakingHeart?.nonce ?? 0}`}
                     className={`text-lg text-rose-500 ${filled ? "opacity-100" : "opacity-25"} ${
