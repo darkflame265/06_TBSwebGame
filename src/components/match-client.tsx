@@ -422,6 +422,7 @@ export function MatchClient({ matchId }: Props) {
       const benignPhaseTransition =
         lowerMsg.includes("planning window closed") ||
         lowerMsg.includes("round is resolving") ||
+        lowerMsg.includes("stale round") ||
         lowerMsg.includes("resolving");
       if (benignPhaseTransition) {
         setMessage(null);
