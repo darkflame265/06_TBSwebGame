@@ -20,6 +20,9 @@ export type MatchResponse = {
   p1_hp: number;
   p2_hp: number;
   attacker_slot: 1 | 2;
+  rematch_p1_requested: boolean;
+  rematch_p2_requested: boolean;
+  rematch_match_id: string | null;
   planning_ends_at: string | null;
   resolution_ends_at: string | null;
   resolved_paths: {

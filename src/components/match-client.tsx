@@ -23,6 +23,8 @@ type CollisionMeta = {
 const BOARD_SIZE = 7;
 const STEP_ANIMATION_MS = 320;
 const PREVIEW_PATH_MS = 250;
+const RED_PATH_STROKE = 8;
+const BLUE_PATH_STROKE = 5;
 const CELL_SIZE = 56;
 const CELL_GAP = 4;
 const BOARD_PX = BOARD_SIZE * CELL_SIZE + (BOARD_SIZE - 1) * CELL_GAP;
@@ -94,6 +96,8 @@ export function MatchClient({ matchId }: Props) {
   const [hitFlashSlot, setHitFlashSlot] = useState<1 | 2 | null>(null);
   const [shakingHeart, setShakingHeart] = useState<{ slot: 1 | 2; index: number; nonce: number } | null>(null);
   const [displayHp, setDisplayHp] = useState<{ p1: number; p2: number }>({ p1: 3, p2: 3 });
+  const [explodedSlot, setExplodedSlot] = useState<1 | 2 | null>(null);
+  const [requestingRematch, setRequestingRematch] = useState(false);
 
   const prevMatchRef = useRef<MatchResponse | null>(null);
   const animatingRef = useRef(false);
@@ -123,6 +127,8 @@ export function MatchClient({ matchId }: Props) {
   const canPlan = !!match && match.status === "active" && match.phase === "planning" && mySlot !== null && !mySubmitted && !animating;
   const attackerSlot = match?.attacker_slot ?? 1;
   const myRole = mySlot ? (attackerSlot === mySlot ? "ATTACK" : "EVADE") : "-";
+  const myRematchRequested = mySlot === 1 ? !!match?.rematch_p1_requested : mySlot === 2 ? !!match?.rematch_p2_requested : false;
+  const opponentRematchRequested = mySlot === 1 ? !!match?.rematch_p2_requested : mySlot === 2 ? !!match?.rematch_p1_requested : false;
 
   const playHitSfx = () => {
     if (muted) return;
@@ -205,12 +211,14 @@ export function MatchClient({ matchId }: Props) {
           setDisplayHp((hp) => {
             const next = Math.max(hp.p1 - 1, 0);
             setShakingHeart({ slot: 1, index: next, nonce: Date.now() });
+            if (next === 0) setExplodedSlot(1);
             return { ...hp, p1: next };
           });
         } else if (meta.hitSlot === 2) {
           setDisplayHp((hp) => {
             const next = Math.max(hp.p2 - 1, 0);
             setShakingHeart({ slot: 2, index: next, nonce: Date.now() });
+            if (next === 0) setExplodedSlot(2);
             return { ...hp, p2: next };
           });
         }
@@ -234,6 +242,7 @@ export function MatchClient({ matchId }: Props) {
       if (!prev) {
         setDisplayBoard(nextBoard);
         setDisplayHp({ p1: data.p1_hp, p2: data.p2_hp });
+        setExplodedSlot(null);
       } else if (
         data.phase === "resolving" &&
         data.resolved_paths &&
@@ -273,6 +282,7 @@ export function MatchClient({ matchId }: Props) {
         setPlannedPath([]);
         setDraggingPath(false);
         autoSubmittedRoundRef.current = null;
+        setExplodedSlot(null);
       }
 
       prevMatchRef.current = data;
@@ -376,6 +386,29 @@ export function MatchClient({ matchId }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [millisLeft, canPlan, mySubmitted, match?.current_turn, plannedPath]);
 
+  useEffect(() => {
+    if (!match?.rematch_match_id) return;
+    if (match.rematch_match_id === match.id) return;
+    router.push(`/match/${match.rematch_match_id}`);
+  }, [match?.id, match?.rematch_match_id, router]);
+
+  const requestRematch = async () => {
+    if (!match || match.status !== "finished" || requestingRematch) return;
+    setRequestingRematch(true);
+    try {
+      const res = await apiPost<{ status: "waiting" | "started"; match_id?: string }>(`/api/matches/${matchId}/rematch`);
+      if (res.status === "started" && res.match_id) {
+        router.push(`/match/${res.match_id}`);
+        return;
+      }
+      await loadMatch();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to request rematch");
+    } finally {
+      setRequestingRematch(false);
+    }
+  };
+
   const leaveMatch = async () => {
     setMessage(null);
     if (match?.status === "finished") {
@@ -408,6 +441,9 @@ export function MatchClient({ matchId }: Props) {
   const p1IsAttacker = attackerSlot === 1;
   const p2IsAttacker = attackerSlot === 2;
   const secondsLeft = (shownMillisLeft / 1000).toFixed(1);
+  const isFinished = match.status === "finished";
+  const iWon = isFinished && mySlot !== null && match.winner_slot === mySlot;
+  const iLost = isFinished && mySlot !== null && match.winner_slot !== null && match.winner_slot !== mySlot;
 
   const beginPathDrag = (row: number, col: number) => {
     if (!canPlan || !currentEnd) return;
@@ -480,6 +516,39 @@ export function MatchClient({ matchId }: Props) {
         </div>
       </div>
 
+      {isFinished && (
+        <div className={`mt-3 rounded-xl p-4 text-center text-2xl font-extrabold ${iWon ? "bg-emerald-100 text-emerald-700" : iLost ? "bg-rose-100 text-rose-700" : "bg-slate-100 text-slate-700"}`}>
+          {iWon ? "YOU WIN" : iLost ? "YOU LOSE" : "MATCH FINISHED"}
+        </div>
+      )}
+
+      {isFinished && (
+        <div className="mt-3 rounded-xl bg-white p-4 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={requestRematch}
+              disabled={requestingRematch || myRematchRequested || !!match.rematch_match_id}
+              className="rounded-lg bg-indigo-700 px-4 py-2 text-white disabled:cursor-not-allowed disabled:bg-slate-400"
+            >
+              {match.rematch_match_id
+                ? "Starting rematch..."
+                : myRematchRequested
+                  ? "Rematch requested"
+                  : requestingRematch
+                    ? "Requesting..."
+                    : "REMATCH"}
+            </button>
+            {opponentRematchRequested && !myRematchRequested && !match.rematch_match_id && (
+              <p className="text-sm font-semibold text-indigo-700">상대방이 재시합을 요청하였습니다.</p>
+            )}
+            {myRematchRequested && !opponentRematchRequested && !match.rematch_match_id && (
+              <p className="text-sm text-slate-600">재시합 요청을 보냈습니다. 상대를 기다리는 중...</p>
+            )}
+          </div>
+        </div>
+      )}
+
       <section className="mt-4 rounded-xl bg-white p-4 shadow-sm">
         <h2 className="font-semibold">Board 7x7</h2>
         <div className="mt-2 grid max-w-md grid-cols-2 gap-2 text-sm">
@@ -494,7 +563,7 @@ export function MatchClient({ matchId }: Props) {
           <div className="col-span-2 rounded border border-slate-200 bg-slate-50 px-3 py-2">
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-1">
-                <span className="text-xs font-medium text-slate-600">Red HP:</span>
+                <span className={`text-xs text-slate-600 ${mySlot === 1 ? "font-bold" : "font-medium"}`}>Red HP:</span>
                 {heartsForHp(displayHp.p1).map((filled, idx) => (
                   <span
                     key={`p1-heart-${idx}-${shakingHeart?.nonce ?? 0}`}
@@ -507,7 +576,7 @@ export function MatchClient({ matchId }: Props) {
                 ))}
               </div>
               <div className="flex items-center gap-1">
-                <span className="text-xs font-medium text-slate-600">Blue HP:</span>
+                <span className={`text-xs text-slate-600 ${mySlot === 2 ? "font-bold" : "font-medium"}`}>Blue HP:</span>
                 {heartsForHp(displayHp.p2).map((filled, idx) => (
                   <span
                     key={`p2-heart-${idx}-${shakingHeart?.nonce ?? 0}`}
@@ -545,13 +614,37 @@ export function MatchClient({ matchId }: Props) {
 
           <svg className="pointer-events-none absolute inset-0" width={BOARD_PX} height={BOARD_PX} viewBox={`0 0 ${BOARD_PX} ${BOARD_PX}`}>
             {match.phase === "planning" && planningLine.split(" ").length >= 2 && (
-              <polyline points={planningLine} fill="none" stroke={mySlot === 1 ? "#dc2626" : "#2563eb"} strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" opacity="0.75" />
+              <polyline
+                points={planningLine}
+                fill="none"
+                stroke={mySlot === 1 ? "#dc2626" : "#2563eb"}
+                strokeWidth={mySlot === 1 ? RED_PATH_STROKE : BLUE_PATH_STROKE}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                opacity="0.75"
+              />
             )}
             {match.phase === "resolving" && resolvingP1Line.split(" ").length >= 2 && (
-              <polyline points={resolvingP1Line} fill="none" stroke="#dc2626" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" opacity="0.75" />
+              <polyline
+                points={resolvingP1Line}
+                fill="none"
+                stroke="#dc2626"
+                strokeWidth={RED_PATH_STROKE}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                opacity="0.75"
+              />
             )}
             {match.phase === "resolving" && resolvingP2Line.split(" ").length >= 2 && (
-              <polyline points={resolvingP2Line} fill="none" stroke="#2563eb" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" opacity="0.75" />
+              <polyline
+                points={resolvingP2Line}
+                fill="none"
+                stroke="#2563eb"
+                strokeWidth={BLUE_PATH_STROKE}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                opacity="0.85"
+              />
             )}
           </svg>
 
@@ -565,7 +658,7 @@ export function MatchClient({ matchId }: Props) {
           <div
             className={`pointer-events-none absolute h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500 ${
               hitFlashSlot === 1 ? "hit-blink" : ""
-            }`}
+            } ${explodedSlot === 1 ? "piece-explode" : ""}`}
             style={{
               left: p1Px.left,
               top: p1Px.top,
@@ -585,7 +678,7 @@ export function MatchClient({ matchId }: Props) {
           <div
             className={`pointer-events-none absolute h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-500 ${
               hitFlashSlot === 2 ? "hit-blink" : ""
-            }`}
+            } ${explodedSlot === 2 ? "piece-explode" : ""}`}
             style={{
               left: p2Px.left,
               top: p2Px.top,
@@ -662,6 +755,9 @@ export function MatchClient({ matchId }: Props) {
           filter: blur(0.4px);
           animation: flame-flicker 0.28s ease-in-out infinite alternate;
         }
+        .piece-explode {
+          animation: piece-explode 0.45s ease-out forwards;
+        }
         @keyframes hit-blink {
           0% {
             opacity: 1;
@@ -711,6 +807,20 @@ export function MatchClient({ matchId }: Props) {
           100% {
             transform: translate(-50%, -50%) scale(1.12);
             opacity: 1;
+          }
+        }
+        @keyframes piece-explode {
+          0% {
+            transform: translate(-50%, -50%) scale(1);
+            opacity: 1;
+          }
+          70% {
+            transform: translate(-50%, -50%) scale(1.8);
+            opacity: 0.9;
+          }
+          100% {
+            transform: translate(-50%, -50%) scale(2.1);
+            opacity: 0;
           }
         }
       `}</style>
