@@ -17,6 +17,9 @@ export type MatchResponse = {
     p1: [number, number];
     p2: [number, number];
   } | null;
+  p1_hp: number;
+  p2_hp: number;
+  attacker_slot: 1 | 2;
   planning_ends_at: string | null;
   resolution_ends_at: string | null;
   resolved_paths: {
@@ -27,6 +30,8 @@ export type MatchResponse = {
     };
     p1: Array<[number, number]>;
     p2: Array<[number, number]>;
+    collision?: boolean;
+    hit_slot?: 1 | 2 | null;
   } | null;
   created_at: string;
   players: Array<{

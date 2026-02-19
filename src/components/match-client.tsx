@@ -15,6 +15,7 @@ type DisplayBoard = { p1: Coord; p2: Coord };
 
 const BOARD_SIZE = 7;
 const STEP_ANIMATION_MS = 320;
+const PREVIEW_PATH_MS = 250;
 const CELL_SIZE = 56;
 const CELL_GAP = 4;
 const BOARD_PX = BOARD_SIZE * CELL_SIZE + (BOARD_SIZE - 1) * CELL_GAP;
@@ -28,6 +29,7 @@ const coordToPx = ([row, col]: Coord) => ({
   left: col * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2,
   top: row * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2
 });
+const heartsForHp = (hp: number) => [0, 1, 2].map((i) => i < hp);
 
 export function MatchClient({ matchId }: Props) {
   const router = useRouter();
@@ -74,10 +76,13 @@ export function MatchClient({ matchId }: Props) {
   }, [match]);
 
   const canPlan = !!match && match.status === "active" && match.phase === "planning" && mySlot !== null && !mySubmitted && !animating;
+  const attackerSlot = match?.attacker_slot ?? 1;
+  const myRole = mySlot ? (attackerSlot === mySlot ? "ATTACK" : "EVADE") : "-";
 
   const animateResolvedRound = async (start: DisplayBoard, p1Path: Coord[], p2Path: Coord[]) => {
     const steps = Math.max(p1Path.length, p2Path.length);
     setResolvedOverlay({ start, p1: p1Path, p2: p2Path });
+    setDisplayBoard(start);
     setFrozenTimerMs(Math.max(0, latestMillisLeftRef.current));
     animatingRef.current = true;
     setAnimating(true);
@@ -92,6 +97,8 @@ export function MatchClient({ matchId }: Props) {
       setFrozenTimerMs(null);
       return;
     }
+
+    await sleep(PREVIEW_PATH_MS);
 
     for (let i = 0; i < steps; i += 1) {
       if (i < p1Path.length) p1 = p1Path[i];
@@ -257,6 +264,8 @@ export function MatchClient({ matchId }: Props) {
   const currentEnd: Coord | null = myPos ? (plannedPath.length > 0 ? plannedPath[plannedPath.length - 1] : myPos) : null;
   const maxPoints = Math.min(match.current_turn, 10);
   const myColor = mySlot === 1 ? "Red" : mySlot === 2 ? "Blue" : "-";
+  const p1IsAttacker = attackerSlot === 1;
+  const p2IsAttacker = attackerSlot === 2;
   const secondsLeft = (shownMillisLeft / 1000).toFixed(1);
 
   const beginPathDrag = (row: number, col: number) => {
@@ -311,7 +320,7 @@ export function MatchClient({ matchId }: Props) {
       <div className="mt-3 rounded-xl bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm text-slate-700">
-            Status: {match.status} | Phase: {match.phase} | Round: {match.current_turn} | Piece: {myColor} | Max path points: {maxPoints}
+            Status: {match.status} | Phase: {match.phase} | Round: {match.current_turn} | Piece: {myColor} | Role: {myRole} | Max path points: {maxPoints}
           </p>
           <p className="font-mono text-sm font-semibold text-slate-900">
             {animating ? "moving..." : `${match.phase} timer: ${secondsLeft}s`}
@@ -326,16 +335,36 @@ export function MatchClient({ matchId }: Props) {
         <h2 className="font-semibold">Board 7x7</h2>
         <div className="mt-2 grid max-w-md grid-cols-2 gap-2 text-sm">
           <div className="flex items-center justify-between rounded border border-slate-200 bg-slate-50 px-3 py-2">
-            <span className="font-medium text-slate-700">Red (Slot 1)</span>
+            <span className="font-medium text-slate-700">Red (Slot 1){p1IsAttacker ? " - ATTACK" : " - EVADE"}</span>
             <span className={p1Submitted ? "font-semibold text-emerald-600" : "font-semibold text-slate-400"}>
-              {p1Submitted ? "✓ Ready" : "Waiting"}
+              {p1Submitted ? "Ready" : "Waiting"}
             </span>
           </div>
           <div className="flex items-center justify-between rounded border border-slate-200 bg-slate-50 px-3 py-2">
-            <span className="font-medium text-slate-700">Blue (Slot 2)</span>
+            <span className="font-medium text-slate-700">Blue (Slot 2){p2IsAttacker ? " - ATTACK" : " - EVADE"}</span>
             <span className={p2Submitted ? "font-semibold text-emerald-600" : "font-semibold text-slate-400"}>
-              {p2Submitted ? "✓ Ready" : "Waiting"}
+              {p2Submitted ? "Ready" : "Waiting"}
             </span>
+          </div>
+          <div className="col-span-2 rounded border border-slate-200 bg-slate-50 px-3 py-2">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-1">
+                <span className="text-xs font-medium text-slate-600">Red HP:</span>
+                {heartsForHp(match.p1_hp).map((filled, idx) => (
+                  <span key={`p1-heart-${idx}`} className={`text-lg text-rose-500 ${filled ? "opacity-100" : "opacity-25"}`}>
+                    ♥
+                  </span>
+                ))}
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="text-xs font-medium text-slate-600">Blue HP:</span>
+                {heartsForHp(match.p2_hp).map((filled, idx) => (
+                  <span key={`p2-heart-${idx}`} className={`text-lg text-rose-500 ${filled ? "opacity-100" : "opacity-25"}`}>
+                    ♥
+                  </span>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
         <div className="relative mt-3" style={{ width: BOARD_PX, height: BOARD_PX }}>
@@ -378,11 +407,19 @@ export function MatchClient({ matchId }: Props) {
               top: p1Px.top,
               transition: `left ${STEP_ANIMATION_MS}ms linear, top ${STEP_ANIMATION_MS}ms linear`,
               boxShadow:
-                mySlot === 1
+                (mySlot === 1
                   ? "0 0 0 3px rgba(34,197,94,0.85), 0 0 12px 3px rgba(34,197,94,0.65)"
-                  : "0 2px 6px rgba(15,23,42,0.25)"
+                  : "0 2px 6px rgba(15,23,42,0.25)") + (p1IsAttacker ? ", 0 0 14px 5px rgba(249,115,22,0.65)" : "")
             }}
           />
+          {p1IsAttacker && (
+            <div
+              className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 animate-pulse text-xs text-orange-500"
+              style={{ left: p1Px.left, top: p1Px.top - 14 }}
+            >
+              🔥
+            </div>
+          )}
           <div
             className="pointer-events-none absolute h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-500"
             style={{
@@ -390,11 +427,19 @@ export function MatchClient({ matchId }: Props) {
               top: p2Px.top,
               transition: `left ${STEP_ANIMATION_MS}ms linear, top ${STEP_ANIMATION_MS}ms linear`,
               boxShadow:
-                mySlot === 2
+                (mySlot === 2
                   ? "0 0 0 3px rgba(34,197,94,0.85), 0 0 12px 3px rgba(34,197,94,0.65)"
-                  : "0 2px 6px rgba(15,23,42,0.25)"
+                  : "0 2px 6px rgba(15,23,42,0.25)") + (p2IsAttacker ? ", 0 0 14px 5px rgba(249,115,22,0.65)" : "")
             }}
           />
+          {p2IsAttacker && (
+            <div
+              className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 animate-pulse text-xs text-orange-500"
+              style={{ left: p2Px.left, top: p2Px.top - 14 }}
+            >
+              🔥
+            </div>
+          )}
         </div>
       </section>
 
