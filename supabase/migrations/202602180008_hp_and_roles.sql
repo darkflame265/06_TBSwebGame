@@ -27,6 +27,8 @@ declare
   v_p2_col integer;
   v_steps integer;
   v_collision boolean := false;
+  v_collision_row integer := null;
+  v_collision_col integer := null;
   v_hit_slot smallint := null;
   v_next_p1_hp integer;
   v_next_p2_hp integer;
@@ -94,6 +96,10 @@ begin
       end if;
       if v_p1_row = v_p2_row and v_p1_col = v_p2_col then
         v_collision := true;
+        if v_collision_row is null then
+          v_collision_row := v_p1_row;
+          v_collision_col := v_p1_col;
+        end if;
       end if;
     end loop;
   end if;
@@ -148,7 +154,12 @@ begin
         'p1', v_path1,
         'p2', v_path2,
         'collision', v_collision,
-        'hit_slot', v_hit_slot
+        'hit_slot', v_hit_slot,
+        'collision_at',
+          case
+            when v_collision_row is null then null
+            else jsonb_build_array(v_collision_row, v_collision_col)
+          end
       )
   where id = p_match_id
   returning * into v_match;

@@ -12,6 +12,11 @@ type Props = {
 
 type Coord = [number, number];
 type DisplayBoard = { p1: Coord; p2: Coord };
+type CollisionMeta = {
+  collision: boolean;
+  hitSlot: 1 | 2 | null;
+  collisionAt: Coord | null;
+};
 
 const BOARD_SIZE = 7;
 const STEP_ANIMATION_MS = 320;
@@ -30,6 +35,18 @@ const coordToPx = ([row, col]: Coord) => ({
   top: row * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2
 });
 const heartsForHp = (hp: number) => [0, 1, 2].map((i) => i < hp);
+
+const deriveCollisionAt = (start: DisplayBoard, p1Path: Coord[], p2Path: Coord[]): Coord | null => {
+  const steps = Math.max(p1Path.length, p2Path.length);
+  let p1 = start.p1;
+  let p2 = start.p2;
+  for (let i = 0; i < steps; i += 1) {
+    if (i < p1Path.length) p1 = p1Path[i];
+    if (i < p2Path.length) p2 = p2Path[i];
+    if (sameCoord(p1, p2)) return p1;
+  }
+  return null;
+};
 
 export function MatchClient({ matchId }: Props) {
   const router = useRouter();
@@ -50,12 +67,17 @@ export function MatchClient({ matchId }: Props) {
     p1: Coord[];
     p2: Coord[];
   } | null>(null);
+  const [muted, setMuted] = useState(false);
+  const [impactCoord, setImpactCoord] = useState<Coord | null>(null);
+  const [hitFlashSlot, setHitFlashSlot] = useState<1 | 2 | null>(null);
+  const [shakingHeart, setShakingHeart] = useState<{ slot: 1 | 2; index: number; nonce: number } | null>(null);
 
   const prevMatchRef = useRef<MatchResponse | null>(null);
   const animatingRef = useRef(false);
   const animatedTurnRef = useRef<number | null>(null);
   const autoSubmittedRoundRef = useRef<number | null>(null);
   const latestMillisLeftRef = useRef(0);
+  const audioCtxRef = useRef<AudioContext | null>(null);
 
   const mySlot = useMemo(() => {
     if (!match || !me) return null;
@@ -79,13 +101,46 @@ export function MatchClient({ matchId }: Props) {
   const attackerSlot = match?.attacker_slot ?? 1;
   const myRole = mySlot ? (attackerSlot === mySlot ? "ATTACK" : "EVADE") : "-";
 
-  const animateResolvedRound = async (start: DisplayBoard, p1Path: Coord[], p2Path: Coord[]) => {
+  const playHitSfx = () => {
+    if (muted) return;
+    try {
+      if (!audioCtxRef.current) audioCtxRef.current = new window.AudioContext();
+      const ctx = audioCtxRef.current;
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "square";
+      osc.frequency.setValueAtTime(220, now);
+      osc.frequency.exponentialRampToValueAtTime(90, now + 0.16);
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.exponentialRampToValueAtTime(0.2, now + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.2);
+    } catch {
+      // ignore audio init errors
+    }
+  };
+
+  const triggerImpactFx = (meta: CollisionMeta) => {
+    if (!meta.collision || !meta.hitSlot || !meta.collisionAt) return;
+    setImpactCoord(meta.collisionAt);
+    setHitFlashSlot(meta.hitSlot);
+    playHitSfx();
+    setTimeout(() => setImpactCoord(null), 450);
+    setTimeout(() => setHitFlashSlot(null), 700);
+  };
+
+  const animateResolvedRound = async (start: DisplayBoard, p1Path: Coord[], p2Path: Coord[], meta: CollisionMeta) => {
     const steps = Math.max(p1Path.length, p2Path.length);
     setResolvedOverlay({ start, p1: p1Path, p2: p2Path });
     setDisplayBoard(start);
     setFrozenTimerMs(Math.max(0, latestMillisLeftRef.current));
     animatingRef.current = true;
     setAnimating(true);
+    triggerImpactFx(meta);
 
     let p1 = start.p1;
     let p2 = start.p2;
@@ -118,6 +173,11 @@ export function MatchClient({ matchId }: Props) {
       const nextBoard = data.board_state ?? DEFAULT_BOARD;
       const prev = prevMatchRef.current;
 
+      if (prev) {
+        if (data.p1_hp < prev.p1_hp) setShakingHeart({ slot: 1, index: data.p1_hp, nonce: Date.now() });
+        if (data.p2_hp < prev.p2_hp) setShakingHeart({ slot: 2, index: data.p2_hp, nonce: Date.now() });
+      }
+
       if (!prev) {
         setDisplayBoard(nextBoard);
       } else if (
@@ -127,7 +187,19 @@ export function MatchClient({ matchId }: Props) {
         !animatingRef.current
       ) {
         const start = data.resolved_paths.start;
-        await animateResolvedRound({ p1: start.p1, p2: start.p2 }, data.resolved_paths.p1, data.resolved_paths.p2);
+        const collisionAt =
+          data.resolved_paths.collision_at ??
+          deriveCollisionAt({ p1: start.p1, p2: start.p2 }, data.resolved_paths.p1, data.resolved_paths.p2);
+        await animateResolvedRound(
+          { p1: start.p1, p2: start.p2 },
+          data.resolved_paths.p1,
+          data.resolved_paths.p2,
+          {
+            collision: !!data.resolved_paths.collision,
+            hitSlot: data.resolved_paths.hit_slot ?? null,
+            collisionAt
+          }
+        );
         animatedTurnRef.current = data.resolved_paths.turn;
       } else if (!animatingRef.current) {
         setDisplayBoard(nextBoard);
@@ -154,10 +226,22 @@ export function MatchClient({ matchId }: Props) {
   };
 
   useEffect(() => {
+    const saved = localStorage.getItem("tbs-muted");
+    if (saved) setMuted(saved === "1");
     supabase.auth.getUser().then(({ data }) => setMe(data.user?.id ?? null));
     loadMatch();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchId]);
+
+  useEffect(() => {
+    localStorage.setItem("tbs-muted", muted ? "1" : "0");
+  }, [muted]);
+
+  useEffect(() => {
+    if (!shakingHeart) return;
+    const t = setTimeout(() => setShakingHeart(null), 550);
+    return () => clearTimeout(t);
+  }, [shakingHeart]);
 
   useEffect(() => {
     const timer = setInterval(() => setNowMs(Date.now()), 33);
@@ -303,18 +387,28 @@ export function MatchClient({ matchId }: Props) {
 
   const p1Px = coordToPx(displayBoard.p1);
   const p2Px = coordToPx(displayBoard.p2);
+  const impactPx = impactCoord ? coordToPx(impactCoord) : null;
 
   return (
     <main className="mx-auto min-h-screen max-w-5xl p-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-3xl font-bold">Match {match.id}</h1>
-        <button
-          onClick={leaveMatch}
-          disabled={leaving}
-          className="rounded-lg bg-red-700 px-4 py-2 text-white disabled:cursor-not-allowed disabled:bg-slate-400"
-        >
-          {leaving ? "Leaving..." : match.status === "finished" ? "Back to lobby" : "Leave match"}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setMuted((v) => !v)}
+            className="rounded-lg bg-slate-700 px-3 py-2 text-sm text-white"
+          >
+            {muted ? "Unmute SFX" : "Mute SFX"}
+          </button>
+          <button
+            onClick={leaveMatch}
+            disabled={leaving}
+            className="rounded-lg bg-red-700 px-4 py-2 text-white disabled:cursor-not-allowed disabled:bg-slate-400"
+          >
+            {leaving ? "Leaving..." : match.status === "finished" ? "Back to lobby" : "Leave match"}
+          </button>
+        </div>
       </div>
 
       <div className="mt-3 rounded-xl bg-white p-4 shadow-sm">
@@ -322,9 +416,7 @@ export function MatchClient({ matchId }: Props) {
           <p className="text-sm text-slate-700">
             Status: {match.status} | Phase: {match.phase} | Round: {match.current_turn} | Piece: {myColor} | Role: {myRole} | Max path points: {maxPoints}
           </p>
-          <p className="font-mono text-sm font-semibold text-slate-900">
-            {animating ? "moving..." : `${match.phase} timer: ${secondsLeft}s`}
-          </p>
+          <p className="font-mono text-sm font-semibold text-slate-900">{animating ? "moving..." : `${match.phase} timer: ${secondsLeft}s`}</p>
         </div>
         <div className="mt-2 h-2 w-full overflow-hidden rounded bg-slate-200">
           <div className="h-full bg-emerald-500" style={{ width: `${Math.max(0, Math.min(100, (shownMillisLeft / 10000) * 100))}%` }} />
@@ -336,31 +428,37 @@ export function MatchClient({ matchId }: Props) {
         <div className="mt-2 grid max-w-md grid-cols-2 gap-2 text-sm">
           <div className="flex items-center justify-between rounded border border-slate-200 bg-slate-50 px-3 py-2">
             <span className="font-medium text-slate-700">Red (Slot 1){p1IsAttacker ? " - ATTACK" : " - EVADE"}</span>
-            <span className={p1Submitted ? "font-semibold text-emerald-600" : "font-semibold text-slate-400"}>
-              {p1Submitted ? "Ready" : "Waiting"}
-            </span>
+            <span className={p1Submitted ? "font-semibold text-emerald-600" : "font-semibold text-slate-400"}>{p1Submitted ? "Ready" : "Waiting"}</span>
           </div>
           <div className="flex items-center justify-between rounded border border-slate-200 bg-slate-50 px-3 py-2">
             <span className="font-medium text-slate-700">Blue (Slot 2){p2IsAttacker ? " - ATTACK" : " - EVADE"}</span>
-            <span className={p2Submitted ? "font-semibold text-emerald-600" : "font-semibold text-slate-400"}>
-              {p2Submitted ? "Ready" : "Waiting"}
-            </span>
+            <span className={p2Submitted ? "font-semibold text-emerald-600" : "font-semibold text-slate-400"}>{p2Submitted ? "Ready" : "Waiting"}</span>
           </div>
           <div className="col-span-2 rounded border border-slate-200 bg-slate-50 px-3 py-2">
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-1">
                 <span className="text-xs font-medium text-slate-600">Red HP:</span>
                 {heartsForHp(match.p1_hp).map((filled, idx) => (
-                  <span key={`p1-heart-${idx}`} className={`text-lg text-rose-500 ${filled ? "opacity-100" : "opacity-25"}`}>
-                    ♥
+                  <span
+                    key={`p1-heart-${idx}-${shakingHeart?.nonce ?? 0}`}
+                    className={`text-lg text-rose-500 ${filled ? "opacity-100" : "opacity-25"} ${
+                      shakingHeart?.slot === 1 && shakingHeart.index === idx ? "heart-shake" : ""
+                    }`}
+                  >
+                    {"\u2665"}
                   </span>
                 ))}
               </div>
               <div className="flex items-center gap-1">
                 <span className="text-xs font-medium text-slate-600">Blue HP:</span>
                 {heartsForHp(match.p2_hp).map((filled, idx) => (
-                  <span key={`p2-heart-${idx}`} className={`text-lg text-rose-500 ${filled ? "opacity-100" : "opacity-25"}`}>
-                    ♥
+                  <span
+                    key={`p2-heart-${idx}-${shakingHeart?.nonce ?? 0}`}
+                    className={`text-lg text-rose-500 ${filled ? "opacity-100" : "opacity-25"} ${
+                      shakingHeart?.slot === 2 && shakingHeart.index === idx ? "heart-shake" : ""
+                    }`}
+                  >
+                    {"\u2665"}
                   </span>
                 ))}
               </div>
@@ -400,45 +498,51 @@ export function MatchClient({ matchId }: Props) {
             )}
           </svg>
 
+          {impactPx && (
+            <div
+              className="pointer-events-none absolute impact-burst -translate-x-1/2 -translate-y-1/2"
+              style={{ left: impactPx.left, top: impactPx.top }}
+            />
+          )}
+
           <div
-            className="pointer-events-none absolute h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500"
+            className={`pointer-events-none absolute h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500 ${
+              hitFlashSlot === 1 ? "hit-blink" : ""
+            }`}
             style={{
               left: p1Px.left,
               top: p1Px.top,
               transition: `left ${STEP_ANIMATION_MS}ms linear, top ${STEP_ANIMATION_MS}ms linear`,
               boxShadow:
-                (mySlot === 1
-                  ? "0 0 0 3px rgba(34,197,94,0.85), 0 0 12px 3px rgba(34,197,94,0.65)"
-                  : "0 2px 6px rgba(15,23,42,0.25)") + (p1IsAttacker ? ", 0 0 14px 5px rgba(249,115,22,0.65)" : "")
+                (mySlot === 1 ? "0 0 0 3px rgba(34,197,94,0.85), 0 0 12px 3px rgba(34,197,94,0.65)" : "0 2px 6px rgba(15,23,42,0.25)") +
+                (p1IsAttacker ? ", 0 0 14px 5px rgba(249,115,22,0.65)" : "")
             }}
           />
           {p1IsAttacker && (
             <div
-              className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 animate-pulse text-xs text-orange-500"
-              style={{ left: p1Px.left, top: p1Px.top - 14 }}
-            >
-              🔥
-            </div>
+              className="pointer-events-none absolute flame-aura -translate-x-1/2 -translate-y-1/2"
+              style={{ left: p1Px.left, top: p1Px.top, transition: `left ${STEP_ANIMATION_MS}ms linear, top ${STEP_ANIMATION_MS}ms linear` }}
+            />
           )}
+
           <div
-            className="pointer-events-none absolute h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-500"
+            className={`pointer-events-none absolute h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-500 ${
+              hitFlashSlot === 2 ? "hit-blink" : ""
+            }`}
             style={{
               left: p2Px.left,
               top: p2Px.top,
               transition: `left ${STEP_ANIMATION_MS}ms linear, top ${STEP_ANIMATION_MS}ms linear`,
               boxShadow:
-                (mySlot === 2
-                  ? "0 0 0 3px rgba(34,197,94,0.85), 0 0 12px 3px rgba(34,197,94,0.65)"
-                  : "0 2px 6px rgba(15,23,42,0.25)") + (p2IsAttacker ? ", 0 0 14px 5px rgba(249,115,22,0.65)" : "")
+                (mySlot === 2 ? "0 0 0 3px rgba(34,197,94,0.85), 0 0 12px 3px rgba(34,197,94,0.65)" : "0 2px 6px rgba(15,23,42,0.25)") +
+                (p2IsAttacker ? ", 0 0 14px 5px rgba(249,115,22,0.65)" : "")
             }}
           />
           {p2IsAttacker && (
             <div
-              className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 animate-pulse text-xs text-orange-500"
-              style={{ left: p2Px.left, top: p2Px.top - 14 }}
-            >
-              🔥
-            </div>
+              className="pointer-events-none absolute flame-aura -translate-x-1/2 -translate-y-1/2"
+              style={{ left: p2Px.left, top: p2Px.top, transition: `left ${STEP_ANIMATION_MS}ms linear, top ${STEP_ANIMATION_MS}ms linear` }}
+            />
           )}
         </div>
       </section>
@@ -446,11 +550,7 @@ export function MatchClient({ matchId }: Props) {
       <section className="mt-4 rounded-xl bg-white p-4 shadow-sm">
         <h2 className="font-semibold">Path Planning</h2>
         <p className="mt-1 text-sm text-slate-600">
-          {match.phase === "resolving"
-            ? "Resolving round..."
-            : mySubmitted
-              ? "Path submitted."
-              : "Drag from your piece (or path end) to set route."}
+          {match.phase === "resolving" ? "Resolving round..." : mySubmitted ? "Path submitted." : "Drag from your piece (or path end) to set route."}
         </p>
         <div className="mt-2 flex flex-wrap gap-2">
           <button
@@ -481,6 +581,82 @@ export function MatchClient({ matchId }: Props) {
       </section>
 
       {message && <p className="mt-4 rounded-lg bg-red-100 p-3 text-sm text-red-700">{message}</p>}
+
+      <style jsx global>{`
+        .hit-blink {
+          animation: hit-blink 0.18s steps(2, end) 4;
+        }
+        .impact-burst {
+          width: 18px;
+          height: 18px;
+          border-radius: 9999px;
+          border: 3px solid rgba(251, 146, 60, 0.95);
+          box-shadow: 0 0 18px rgba(251, 146, 60, 0.9);
+          animation: impact-burst 0.42s ease-out forwards;
+        }
+        .heart-shake {
+          animation: heart-shake 0.45s ease-in-out;
+        }
+        .flame-aura {
+          width: 22px;
+          height: 22px;
+          border-radius: 9999px;
+          background: radial-gradient(circle at 50% 65%, rgba(251, 146, 60, 0.9), rgba(251, 146, 60, 0.35) 55%, rgba(251, 146, 60, 0) 75%);
+          filter: blur(0.4px);
+          animation: flame-flicker 0.28s ease-in-out infinite alternate;
+        }
+        @keyframes hit-blink {
+          0% {
+            opacity: 1;
+          }
+          50% {
+            opacity: 0.2;
+          }
+          100% {
+            opacity: 1;
+          }
+        }
+        @keyframes impact-burst {
+          0% {
+            transform: translate(-50%, -50%) scale(0.4);
+            opacity: 1;
+          }
+          100% {
+            transform: translate(-50%, -50%) scale(2.1);
+            opacity: 0;
+          }
+        }
+        @keyframes heart-shake {
+          0% {
+            transform: translateX(0);
+          }
+          20% {
+            transform: translateX(-2px);
+          }
+          40% {
+            transform: translateX(2px);
+          }
+          60% {
+            transform: translateX(-2px);
+          }
+          80% {
+            transform: translateX(2px);
+          }
+          100% {
+            transform: translateX(0);
+          }
+        }
+        @keyframes flame-flicker {
+          0% {
+            transform: translate(-50%, -50%) scale(1);
+            opacity: 0.8;
+          }
+          100% {
+            transform: translate(-50%, -50%) scale(1.12);
+            opacity: 1;
+          }
+        }
+      `}</style>
     </main>
   );
 }

@@ -32,6 +32,7 @@ export type MatchResponse = {
     p2: Array<[number, number]>;
     collision?: boolean;
     hit_slot?: 1 | 2 | null;
+    collision_at?: [number, number] | null;
   } | null;
   created_at: string;
   players: Array<{
