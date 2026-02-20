@@ -22,7 +22,7 @@ type CollisionMeta = {
 
 const BOARD_SIZE = 7;
 const STEP_ANIMATION_MS = 320;
-const PREVIEW_PATH_MS = 1000;
+const PREVIEW_PATH_MS = 2000;
 const RED_PATH_STROKE = 8;
 const BLUE_PATH_STROKE = 5;
 const SUBMIT_BUFFER_MS = 3000;
