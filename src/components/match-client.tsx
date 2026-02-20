@@ -61,6 +61,16 @@ const parsePath = (value: unknown): Coord[] => {
   }
   return out;
 };
+const isTypingTarget = (target: EventTarget | null) => {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName.toLowerCase();
+  return (
+    tag === "input" ||
+    tag === "textarea" ||
+    tag === "select" ||
+    target.isContentEditable
+  );
+};
 
 const SwordIcon = () => (
   <svg viewBox="0 0 64 64" className="h-16 w-16" aria-hidden>
@@ -190,6 +200,7 @@ export function MatchClient({ matchId }: Props) {
   const lastSyncTryAtRef = useRef(0);
   const requestRematchRef = useRef<() => void>(() => {});
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
+  const chatInputRef = useRef<HTMLInputElement | null>(null);
 
   const mySlot = useMemo(() => {
     if (!match || !me) return null;
@@ -707,6 +718,7 @@ export function MatchClient({ matchId }: Props) {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (isTypingTarget(event.target)) return;
       if (!match || !canPlan || mySlot === null) return;
 
       let dRow = 0;
@@ -791,6 +803,7 @@ export function MatchClient({ matchId }: Props) {
       if (event.key.toLowerCase() !== "r") return;
       if (event.ctrlKey || event.metaKey || event.altKey) return;
       if (match?.status !== "finished") return;
+      if (isTypingTarget(event.target)) return;
 
       event.preventDefault();
       requestRematchRef.current();
@@ -799,6 +812,27 @@ export function MatchClient({ matchId }: Props) {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [match?.status]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Tab") return;
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      const input = chatInputRef.current;
+      if (!input) return;
+
+      event.preventDefault();
+      if (document.activeElement === input) {
+        input.blur();
+      } else {
+        input.focus();
+        const len = input.value.length;
+        input.setSelectionRange(len, len);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   const leaveMatch = async () => {
     setMessage(null);
@@ -1295,6 +1329,7 @@ export function MatchClient({ matchId }: Props) {
         </div>
         <div className="mt-3 flex gap-2">
           <input
+            ref={chatInputRef}
             value={chatInput}
             onChange={(e) => setChatInput(e.target.value)}
             onKeyDown={(e) => {
