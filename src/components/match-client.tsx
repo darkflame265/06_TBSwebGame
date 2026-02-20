@@ -668,6 +668,57 @@ export function MatchClient({ matchId }: Props) {
     router.push(`/match/${match.rematch_match_id}`);
   }, [match?.id, match?.rematch_match_id, router]);
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!match || !canPlan || mySlot === null) return;
+
+      let dRow = 0;
+      let dCol = 0;
+      if (event.key === "ArrowLeft") dCol = -1;
+      else if (event.key === "ArrowRight") dCol = 1;
+      else if (event.key === "ArrowUp") dRow = -1;
+      else if (event.key === "ArrowDown") dRow = 1;
+      else return;
+
+      event.preventDefault();
+
+      const myPosLocal: Coord =
+        mySlot === 1 ? displayBoard.p1 : (displayBoard.p2 as Coord);
+      const maxPointsLocal = Math.min(match.current_turn, 10);
+
+      setPlannedPath((prev) => {
+        const end = prev.length > 0 ? prev[prev.length - 1] : myPosLocal;
+        const target: Coord = [end[0] + dRow, end[1] + dCol];
+
+        if (
+          target[0] < 0 ||
+          target[0] >= BOARD_SIZE ||
+          target[1] < 0 ||
+          target[1] >= BOARD_SIZE
+        ) {
+          return prev;
+        }
+
+        const back: Coord | null =
+          prev.length > 0
+            ? prev.length > 1
+              ? prev[prev.length - 2]
+              : myPosLocal
+            : null;
+        if (back && sameCoord(back, target)) {
+          return prev.slice(0, -1);
+        }
+
+        if (prev.length >= maxPointsLocal) return prev;
+        if (!isOrthogonalStep(end, target)) return prev;
+        return [...prev, target];
+      });
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [canPlan, displayBoard.p1, displayBoard.p2, match, mySlot]);
+
   const requestRematch = async () => {
     if (!match || match.status !== "finished" || requestingRematch) return;
     if (!opponentOnline) {
