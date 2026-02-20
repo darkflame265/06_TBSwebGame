@@ -484,6 +484,12 @@ export function MatchClient({ matchId }: Props) {
   }, [matchId]);
 
   useEffect(() => {
+    const poll = setInterval(() => loadChat(), 1000);
+    return () => clearInterval(poll);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matchId]);
+
+  useEffect(() => {
     const stopDragging = () => setDraggingPath(false);
     window.addEventListener("pointerup", stopDragging);
     return () => window.removeEventListener("pointerup", stopDragging);
