@@ -22,7 +22,7 @@ type CollisionMeta = {
 
 const BOARD_SIZE = 7;
 const STEP_ANIMATION_MS = 320;
-const PREVIEW_PATH_MS = 500;
+const PREVIEW_PATH_MS = 1000;
 const RED_PATH_STROKE = 8;
 const BLUE_PATH_STROKE = 5;
 const SUBMIT_BUFFER_MS = 3000;
@@ -37,6 +37,10 @@ const sameCoord = (a: Coord, b: Coord) => a[0] === b[0] && a[1] === b[1];
 const isOrthogonalStep = (from: Coord, to: Coord) =>
   Math.abs(from[0] - to[0]) + Math.abs(from[1] - to[1]) === 1;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const waitForPaint = () =>
+  new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  });
 const coordToPx = ([row, col]: Coord) => ({
   left: col * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2,
   top: row * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2
@@ -233,6 +237,8 @@ export function MatchClient({ matchId }: Props) {
       return;
     }
 
+    // Ensure path overlay is painted on screen before movement begins.
+    await waitForPaint();
     await sleep(PREVIEW_PATH_MS);
 
     for (let i = 0; i < steps; i += 1) {
