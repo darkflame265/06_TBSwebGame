@@ -55,3 +55,12 @@ export type MatchResponse = {
     created_at: string;
   }>;
 };
+
+export type MatchChatMessage = {
+  id: number;
+  match_id: string;
+  user_id: string;
+  nickname: string | null;
+  message: string;
+  created_at: string;
+};

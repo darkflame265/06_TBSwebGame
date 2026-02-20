@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getBrowserSupabaseClient } from "@/lib/supabase/browser";
 import { apiGet, apiPost } from "@/lib/client-api";
-import type { MatchResponse } from "@/types/api";
+import type { MatchChatMessage, MatchResponse } from "@/types/api";
 
 type Props = {
   matchId: string;
@@ -174,6 +174,9 @@ export function MatchClient({ matchId }: Props) {
   const [openProfileSlot, setOpenProfileSlot] = useState<1 | 2 | null>(null);
   const [onlineUserIds, setOnlineUserIds] = useState<string[]>([]);
   const [presenceReady, setPresenceReady] = useState(false);
+  const [chatMessages, setChatMessages] = useState<MatchChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [sendingChat, setSendingChat] = useState(false);
 
   const prevMatchRef = useRef<MatchResponse | null>(null);
   const animatingRef = useRef(false);
@@ -186,6 +189,7 @@ export function MatchClient({ matchId }: Props) {
   const lockedPathRef = useRef<Coord[] | null>(null);
   const lastSyncTryAtRef = useRef(0);
   const requestRematchRef = useRef<() => void>(() => {});
+  const chatScrollRef = useRef<HTMLDivElement | null>(null);
 
   const mySlot = useMemo(() => {
     if (!match || !me) return null;
@@ -436,11 +440,21 @@ export function MatchClient({ matchId }: Props) {
     }
   };
 
+  const loadChat = async () => {
+    try {
+      const data = await apiGet<MatchChatMessage[]>(`/api/matches/${matchId}/chat`);
+      setChatMessages(data);
+    } catch {
+      // keep gameplay stable even when chat fails
+    }
+  };
+
   useEffect(() => {
     const saved = localStorage.getItem("tbs-muted");
     if (saved) setMuted(saved === "1");
     supabase.auth.getUser().then(({ data }) => setMe(data.user?.id ?? null));
     loadMatch();
+    loadChat();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchId]);
 
@@ -508,6 +522,16 @@ export function MatchClient({ matchId }: Props) {
         },
         () => loadMatch(),
       )
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "match_chat_messages",
+          filter: `match_id=eq.${matchId}`,
+        },
+        () => loadChat(),
+      )
       .subscribe();
 
     return () => {
@@ -515,6 +539,12 @@ export function MatchClient({ matchId }: Props) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchId]);
+
+  useEffect(() => {
+    const node = chatScrollRef.current;
+    if (!node) return;
+    node.scrollTop = node.scrollHeight;
+  }, [chatMessages]);
 
   useEffect(() => {
     if (!me) return;
@@ -778,6 +808,25 @@ export function MatchClient({ matchId }: Props) {
     }
   };
 
+  const sendChat = async () => {
+    const next = chatInput.trim();
+    if (!next || sendingChat) return;
+    if (next.length > 300) {
+      setMessage("Chat message must be 300 characters or less");
+      return;
+    }
+    setSendingChat(true);
+    try {
+      await apiPost(`/api/matches/${matchId}/chat`, { message: next });
+      setChatInput("");
+      await loadChat();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to send chat");
+    } finally {
+      setSendingChat(false);
+    }
+  };
+
   if (!match) {
     return (
       <main className="mx-auto min-h-screen max-w-5xl p-6">
@@ -969,7 +1018,8 @@ export function MatchClient({ matchId }: Props) {
         </div>
       )}
 
-      <section className="mt-4 rounded-xl bg-white p-4 shadow-sm">
+      <div className="mt-4 flex flex-col gap-4 xl:flex-row xl:items-start">
+      <section className="rounded-xl bg-white p-4 shadow-sm xl:flex-1">
         <h2 className="font-semibold">Board 7x7</h2>
         <div className="mt-2 grid max-w-md grid-cols-2 gap-2 text-sm">
           <div className="relative min-w-0">
@@ -1210,6 +1260,58 @@ export function MatchClient({ matchId }: Props) {
           </div>
         </div>
       </section>
+
+      <aside className="rounded-xl bg-white p-4 shadow-sm xl:w-[320px] xl:shrink-0">
+        <h2 className="font-semibold">Match Chat</h2>
+        <div
+          ref={chatScrollRef}
+          className="mt-3 h-[420px] overflow-y-auto rounded border border-slate-200 bg-slate-50 p-2"
+        >
+          {chatMessages.length === 0 ? (
+            <p className="text-sm text-slate-500">No messages yet.</p>
+          ) : (
+            <ul className="space-y-1">
+              {chatMessages.map((msg) => {
+                const displayName =
+                  msg.nickname?.trim() || msg.user_id.slice(0, 8);
+                return (
+                  <li key={msg.id} className="break-words text-sm text-slate-700">
+                    <span className="font-semibold text-slate-900">
+                      {displayName}
+                    </span>
+                    {" : "}
+                    <span>{msg.message}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+        <div className="mt-3 flex gap-2">
+          <input
+            value={chatInput}
+            onChange={(e) => setChatInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                void sendChat();
+              }
+            }}
+            maxLength={300}
+            placeholder="Type a message..."
+            className="flex-1 rounded border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500"
+          />
+          <button
+            type="button"
+            onClick={() => void sendChat()}
+            disabled={sendingChat || chatInput.trim().length === 0}
+            className="rounded bg-slate-800 px-3 py-2 text-sm text-white disabled:cursor-not-allowed disabled:bg-slate-400"
+          >
+            Send
+          </button>
+        </div>
+      </aside>
+      </div>
 
       {message && (
         <p className="mt-4 rounded-lg bg-red-100 p-3 text-sm text-red-700">
