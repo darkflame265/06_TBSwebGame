@@ -200,7 +200,6 @@ export function MatchClient({ matchId }: Props) {
     !!match &&
     match.status === "active" &&
     match.phase === "planning" &&
-    !!match.planning_ends_at &&
     mySlot !== null &&
     !mySubmitted &&
     !animating &&
@@ -582,11 +581,6 @@ export function MatchClient({ matchId }: Props) {
       : rawShownMillisLeft;
   const isMovingUi =
     animating || planningLocked || match?.phase === "resolving";
-  const waitingForBothPlayers =
-    !!match &&
-    match.status === "active" &&
-    match.phase === "planning" &&
-    !match.planning_ends_at;
 
   useEffect(() => {
     latestMillisLeftRef.current = millisLeft;
@@ -595,7 +589,6 @@ export function MatchClient({ matchId }: Props) {
   useEffect(() => {
     if (!match || match.phase !== "planning" || match.status !== "active")
       return;
-    if (!match.planning_ends_at) return;
     if (mySlot === null || mySubmitted || animating) return;
     if (millisLeft > SUBMIT_BUFFER_MS) return;
     if (autoSubmittedRoundRef.current === match.current_turn) return;
@@ -625,7 +618,6 @@ export function MatchClient({ matchId }: Props) {
       match.status !== "active"
     )
       return;
-    if (!match.planning_ends_at) return;
     if (mySlot === null || millisLeft <= 0) return;
     const locked = lockedPathRef.current;
     if (!locked) return;
@@ -820,11 +812,7 @@ export function MatchClient({ matchId }: Props) {
             points: {maxPoints}
           </p>
           <p className="font-mono text-sm font-semibold text-slate-900">
-            {waitingForBothPlayers
-              ? "waiting for both players..."
-              : isMovingUi
-                ? "moving..."
-                : `${match.phase} timer: ${secondsLeft}s`}
+            {isMovingUi ? "moving..." : `${match.phase} timer: ${secondsLeft}s`}
           </p>
         </div>
         <div className="mt-2 h-2 w-full overflow-hidden rounded bg-slate-200">

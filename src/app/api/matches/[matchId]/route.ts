@@ -23,13 +23,6 @@ export async function GET(request: Request, context: Context) {
   }
   const { matchId } = parsedParams.data;
 
-  const { error: connectError } = await client.rpc("mark_player_connected", {
-    p_match_id: matchId
-  });
-  if (connectError && !connectError.message.toLowerCase().includes("mark_player_connected")) {
-    return jsonError(connectError.message, 400);
-  }
-
   const { error: tickError } = await client.rpc("tick_match_round", {
     p_match_id: matchId
   });
