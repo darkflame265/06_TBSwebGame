@@ -185,6 +185,7 @@ export function MatchClient({ matchId }: Props) {
   const plannedPathRef = useRef<Coord[]>([]);
   const lockedPathRef = useRef<Coord[] | null>(null);
   const lastSyncTryAtRef = useRef(0);
+  const requestRematchRef = useRef<() => void>(() => {});
 
   const mySlot = useMemo(() => {
     if (!match || !me) return null;
@@ -721,7 +722,7 @@ export function MatchClient({ matchId }: Props) {
 
   const requestRematch = async () => {
     if (!match || match.status !== "finished" || requestingRematch) return;
-    if (!opponentOnline) {
+    if (presenceReady && !opponentOnline) {
       setMessage("The opponent is offline. Rematch is unavailable.");
       return;
     }
@@ -744,6 +745,24 @@ export function MatchClient({ matchId }: Props) {
       setRequestingRematch(false);
     }
   };
+  requestRematchRef.current = () => {
+    void requestRematch();
+  };
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.repeat) return;
+      if (event.key.toLowerCase() !== "r") return;
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      if (match?.status !== "finished") return;
+
+      event.preventDefault();
+      requestRematchRef.current();
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [match?.status]);
 
   const leaveMatch = async () => {
     setMessage(null);
@@ -911,7 +930,7 @@ export function MatchClient({ matchId }: Props) {
                 requestingRematch ||
                 myRematchRequested ||
                 !!match.rematch_match_id ||
-                !opponentOnline
+                (presenceReady && !opponentOnline)
               }
               className="rounded-lg bg-indigo-700 px-4 py-2 text-white disabled:cursor-not-allowed disabled:bg-slate-400"
             >
