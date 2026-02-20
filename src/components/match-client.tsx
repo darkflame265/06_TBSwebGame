@@ -385,13 +385,10 @@ export function MatchClient({ matchId }: Props) {
         setDisplayHp({ p1: data.p1_hp, p2: data.p2_hp });
       }
 
-      if (
-        prev &&
-        prev.phase === "resolving" &&
-        data.phase === "planning" &&
-        !animatingRef.current
-      ) {
-        setResolvedOverlay(null);
+      if (prev && prev.phase === "resolving" && data.phase === "planning") {
+        if (!animatingRef.current) {
+          setResolvedOverlay(null);
+        }
         setPlannedPath([]);
         plannedPathRef.current = [];
         lockedPathRef.current = null;
@@ -399,12 +396,10 @@ export function MatchClient({ matchId }: Props) {
         setDraggingPath(false);
         autoSubmittedRoundRef.current = null;
       }
-      if (
-        prev &&
-        data.current_turn !== prev.current_turn &&
-        !animatingRef.current
-      ) {
-        setResolvedOverlay(null);
+      if (prev && data.current_turn !== prev.current_turn) {
+        if (!animatingRef.current) {
+          setResolvedOverlay(null);
+        }
         setPlannedPath([]);
         plannedPathRef.current = [];
         lockedPathRef.current = null;
