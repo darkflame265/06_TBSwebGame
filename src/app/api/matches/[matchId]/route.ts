@@ -54,7 +54,7 @@ export async function GET(request: Request, context: Context) {
     const runnerPos = obstacleState.attacker_slot === 1 ? p2 : p1;
     const seed = seedForMatchRound(matchId, obstacleState.current_turn);
     const generated = generateObstacles({
-      gridSize: 7,
+      gridSize: 5,
       chaserPos,
       runnerPos,
       obstacleCount: 5,

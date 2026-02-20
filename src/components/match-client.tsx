@@ -20,7 +20,7 @@ type CollisionMeta = {
   collisionT: number | null;
 };
 
-const BOARD_SIZE = 7;
+const BOARD_SIZE = 5;
 const STEP_ANIMATION_MS = 320;
 const PREVIEW_PATH_MS = 250;
 const RED_PATH_STROKE = 8;
@@ -31,7 +31,7 @@ const PLANNING_UI_MS = PLANNING_TOTAL_MS - SUBMIT_BUFFER_MS;
 const CELL_SIZE = 56;
 const CELL_GAP = 4;
 const BOARD_PX = BOARD_SIZE * CELL_SIZE + (BOARD_SIZE - 1) * CELL_GAP;
-const DEFAULT_BOARD: DisplayBoard = { p1: [0, 3], p2: [6, 3] };
+const DEFAULT_BOARD: DisplayBoard = { p1: [0, 2], p2: [4, 2] };
 
 const sameCoord = (a: Coord, b: Coord) => a[0] === b[0] && a[1] === b[1];
 const isOrthogonalStep = (from: Coord, to: Coord) =>
@@ -1068,7 +1068,7 @@ export function MatchClient({ matchId }: Props) {
 
       <div className="mt-4 flex flex-col gap-4 xl:flex-row xl:items-start">
       <section className="rounded-xl bg-white p-4 shadow-sm xl:flex-1">
-        <h2 className="font-semibold">Board 7x7</h2>
+        <h2 className="font-semibold">Board 5x5</h2>
         <div className="mt-2 grid max-w-md grid-cols-2 gap-2 text-sm">
           <div className="relative min-w-0">
             <button
@@ -1168,8 +1168,12 @@ export function MatchClient({ matchId }: Props) {
             style={{ width: BOARD_PX, height: BOARD_PX }}
           >
             <div
-              className="grid grid-cols-7 gap-1"
-              style={{ width: BOARD_PX, height: BOARD_PX }}
+              className="grid gap-1"
+              style={{
+                width: BOARD_PX,
+                height: BOARD_PX,
+                gridTemplateColumns: `repeat(${BOARD_SIZE}, minmax(0, 1fr))`,
+              }}
             >
               {Array.from({ length: BOARD_SIZE }).map((_, row) =>
                 Array.from({ length: BOARD_SIZE }).map((__, col) => (
