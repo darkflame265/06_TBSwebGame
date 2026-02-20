@@ -221,6 +221,10 @@ export function MatchClient({ matchId }: Props) {
     !mySubmitted &&
     !animating &&
     !planningLocked;
+  const obstacleKeys = useMemo(
+    () => new Set((match?.obstacles ?? []).map(([x, y]) => `${x},${y}`)),
+    [match?.obstacles]
+  );
   const attackerSlot = match?.attacker_slot ?? 1;
   const myRole = mySlot ? (attackerSlot === mySlot ? "ATTACK" : "EVADE") : "-";
   const myRematchRequested =
@@ -738,6 +742,7 @@ export function MatchClient({ matchId }: Props) {
       setPlannedPath((prev) => {
         const end = prev.length > 0 ? prev[prev.length - 1] : myPosLocal;
         const target: Coord = [end[0] + dRow, end[1] + dCol];
+        const targetKey = `${target[0]},${target[1]}`;
 
         if (
           target[0] < 0 ||
@@ -747,6 +752,7 @@ export function MatchClient({ matchId }: Props) {
         ) {
           return prev;
         }
+        if (obstacleKeys.has(targetKey)) return prev;
 
         const back: Coord | null =
           prev.length > 0
@@ -766,7 +772,7 @@ export function MatchClient({ matchId }: Props) {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [canPlan, displayBoard.p1, displayBoard.p2, match, mySlot]);
+  }, [canPlan, displayBoard.p1, displayBoard.p2, match, mySlot, obstacleKeys]);
 
   const requestRematch = async () => {
     if (!match || match.status !== "finished" || requestingRematch) return;
@@ -911,6 +917,7 @@ export function MatchClient({ matchId }: Props) {
     setPlannedPath((prev) => {
       const end = prev.length > 0 ? prev[prev.length - 1] : myPos;
       const target: Coord = [row, col];
+      const targetKey = `${row},${col}`;
       if (sameCoord(end, target)) return prev;
 
       const back =
@@ -921,6 +928,7 @@ export function MatchClient({ matchId }: Props) {
           : null;
       if (back && sameCoord(back, target)) return prev.slice(0, -1);
       if (!isOrthogonalStep(end, target)) return prev;
+      if (obstacleKeys.has(targetKey)) return prev;
       if (prev.length >= maxPoints) return prev;
       return [...prev, target];
     });
@@ -1165,19 +1173,26 @@ export function MatchClient({ matchId }: Props) {
             >
               {Array.from({ length: BOARD_SIZE }).map((_, row) =>
                 Array.from({ length: BOARD_SIZE }).map((__, col) => (
-                  <button
-                    key={`${row}-${col}`}
-                    type="button"
-                    onPointerDown={() => beginPathDrag(row, col)}
-                    onPointerEnter={() => extendOrRewindPath(row, col)}
-                    onPointerUp={() => setDraggingPath(false)}
-                    className={`rounded border border-slate-300 bg-white text-[10px] text-slate-500 ${
-                      canPlan ? "hover:bg-slate-100" : "cursor-default"
-                    }`}
-                    style={{ width: CELL_SIZE, height: CELL_SIZE }}
-                  >
-                    ({row},{col})
-                  </button>
+                  (() => {
+                    const isObstacle = obstacleKeys.has(`${row},${col}`);
+                    return (
+                      <button
+                        key={`${row}-${col}`}
+                        type="button"
+                        onPointerDown={() => beginPathDrag(row, col)}
+                        onPointerEnter={() => extendOrRewindPath(row, col)}
+                        onPointerUp={() => setDraggingPath(false)}
+                        className={`rounded border border-slate-300 text-[10px] ${
+                          isObstacle
+                            ? "cursor-not-allowed bg-slate-800 text-slate-300"
+                            : `bg-white text-slate-500 ${canPlan ? "hover:bg-slate-100" : "cursor-default"}`
+                        }`}
+                        style={{ width: CELL_SIZE, height: CELL_SIZE }}
+                      >
+                        ({row},{col})
+                      </button>
+                    );
+                  })()
                 )),
               )}
             </div>

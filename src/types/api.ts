@@ -17,6 +17,8 @@ export type MatchResponse = {
     p1: [number, number];
     p2: [number, number];
   } | null;
+  obstacles: Array<[number, number]> | null;
+  obstacles_turn: number | null;
   p1_hp: number;
   p2_hp: number;
   attacker_slot: 1 | 2;
