@@ -179,6 +179,7 @@ export function MatchClient({ matchId }: Props) {
   const animatingRef = useRef(false);
   const animatedTurnRef = useRef<number | null>(null);
   const autoSubmittedRoundRef = useRef<number | null>(null);
+  const ackedResolveTurnRef = useRef<number | null>(null);
   const latestMillisLeftRef = useRef(0);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const plannedPathRef = useRef<Coord[]>([]);
@@ -257,11 +258,20 @@ export function MatchClient({ matchId }: Props) {
     setTimeout(() => setHitFlashSlot(null), 700);
   };
 
+  const ackResolve = async (turn: number) => {
+    try {
+      await apiPost(`/api/matches/${matchId}/resolve-ack`, { turn });
+    } catch {
+      // best effort; timeout fallback on server still guarantees progress
+    }
+  };
+
   const animateResolvedRound = async (
     start: DisplayBoard,
     p1Path: Coord[],
     p2Path: Coord[],
     meta: CollisionMeta,
+    turn: number,
   ) => {
     const steps = Math.max(p1Path.length, p2Path.length);
     setResolvedOverlay({ start, p1: p1Path, p2: p2Path });
@@ -341,6 +351,10 @@ export function MatchClient({ matchId }: Props) {
     setAnimating(false);
     animatingRef.current = false;
     setFrozenTimerMs(null);
+    if (ackedResolveTurnRef.current !== turn) {
+      ackedResolveTurnRef.current = turn;
+      void ackResolve(turn);
+    }
   };
 
   const loadMatch = async () => {
@@ -378,6 +392,7 @@ export function MatchClient({ matchId }: Props) {
             collisionStep: data.resolved_paths.collision_step ?? null,
             collisionT: data.resolved_paths.collision_t ?? null,
           },
+          data.resolved_paths.turn,
         );
         animatedTurnRef.current = data.resolved_paths.turn;
       } else if (!animatingRef.current) {
@@ -395,6 +410,7 @@ export function MatchClient({ matchId }: Props) {
         setPlanningLocked(false);
         setDraggingPath(false);
         autoSubmittedRoundRef.current = null;
+        ackedResolveTurnRef.current = null;
       }
       if (prev && data.current_turn !== prev.current_turn) {
         if (!animatingRef.current) {
@@ -406,6 +422,7 @@ export function MatchClient({ matchId }: Props) {
         setPlanningLocked(false);
         setDraggingPath(false);
         autoSubmittedRoundRef.current = null;
+        ackedResolveTurnRef.current = null;
         setExplodedSlot(null);
       }
 
