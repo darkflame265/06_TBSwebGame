@@ -328,7 +328,7 @@ export function MatchClient({ matchId }: Props) {
         setDisplayHp({ p1: data.p1_hp, p2: data.p2_hp });
       }
 
-      if (prev && prev.phase === "resolving" && data.phase === "planning") {
+      if (prev && prev.phase === "resolving" && data.phase === "planning" && !animatingRef.current) {
         setResolvedOverlay(null);
         setPlannedPath([]);
         plannedPathRef.current = [];
@@ -337,7 +337,7 @@ export function MatchClient({ matchId }: Props) {
         setDraggingPath(false);
         autoSubmittedRoundRef.current = null;
       }
-      if (prev && data.current_turn !== prev.current_turn) {
+      if (prev && data.current_turn !== prev.current_turn && !animatingRef.current) {
         setResolvedOverlay(null);
         setPlannedPath([]);
         plannedPathRef.current = [];
@@ -534,6 +534,14 @@ export function MatchClient({ matchId }: Props) {
   }, [match, planningLocked, millisLeft, mySlot]);
 
   useEffect(() => {
+    if (!match) return;
+    if (animating) return;
+    if (match.phase !== "planning") return;
+    if (!resolvedOverlay) return;
+    setResolvedOverlay(null);
+  }, [animating, match, resolvedOverlay]);
+
+  useEffect(() => {
     if (!match?.rematch_match_id) return;
     if (match.rematch_match_id === match.id) return;
     router.push(`/match/${match.rematch_match_id}`);
@@ -627,6 +635,7 @@ export function MatchClient({ matchId }: Props) {
   const planningLine = myPos ? pathToLine([myPos, ...plannedPath]) : "";
   const resolvingP1Line = resolvedOverlay ? pathToLine([resolvedOverlay.start.p1, ...resolvedOverlay.p1]) : "";
   const resolvingP2Line = resolvedOverlay ? pathToLine([resolvedOverlay.start.p2, ...resolvedOverlay.p2]) : "";
+  const showResolvedPaths = !!resolvedOverlay && (match.phase === "resolving" || animating);
 
   const p1Px = coordToPx(displayBoard.p1);
   const p2Px = coordToPx(displayBoard.p2);
@@ -822,7 +831,7 @@ export function MatchClient({ matchId }: Props) {
                 opacity="0.75"
               />
             )}
-            {match.phase === "resolving" && resolvingP1Line.split(" ").length >= 2 && (
+            {showResolvedPaths && resolvingP1Line.split(" ").length >= 2 && (
               <polyline
                 points={resolvingP1Line}
                 fill="none"
@@ -833,7 +842,7 @@ export function MatchClient({ matchId }: Props) {
                 opacity="0.75"
               />
             )}
-            {match.phase === "resolving" && resolvingP2Line.split(" ").length >= 2 && (
+            {showResolvedPaths && resolvingP2Line.split(" ").length >= 2 && (
               <polyline
                 points={resolvingP2Line}
                 fill="none"
