@@ -102,31 +102,17 @@ export async function POST(request: Request, context: Context) {
   const body = await parseBody(request, postBodySchema);
   if (!body.success) return body.response;
 
-  const { data, error: insertError } = await client
+  const { error: insertError } = await client
     .from("match_chat_messages")
     .insert({
       match_id: matchId,
       user_id: user.id,
       message: body.data.message
-    })
-    .select("id,match_id,user_id,message,created_at")
-    .single();
+    });
 
-  if (insertError || !data) {
+  if (insertError) {
     return jsonError(insertError?.message ?? "Failed to send message", 400);
   }
 
-  const { data: profile } = await client
-    .from("user_profiles")
-    .select("nickname")
-    .eq("user_id", user.id)
-    .maybeSingle();
-
-  return NextResponse.json(
-    {
-      ...data,
-      nickname: profile?.nickname ?? null
-    },
-    { status: 201 }
-  );
+  return NextResponse.json({ ok: true }, { status: 201 });
 }
