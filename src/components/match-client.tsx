@@ -889,7 +889,7 @@ export function MatchClient({ matchId }: Props) {
       ? plannedPath[plannedPath.length - 1]
       : myPos
     : null;
-  const maxPoints = Math.min(match.current_turn, 10);
+  const maxPoints = Math.min(match.current_turn + 4, 10);
   const usedPathPoints = plannedPath.length;
   const remainingPathPoints = Math.max(0, maxPoints - usedPathPoints);
   const myColor = mySlot === 1 ? "Red" : mySlot === 2 ? "Blue" : "-";

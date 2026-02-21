@@ -85,7 +85,7 @@ begin
   end if;
 
   v_round := v_match.current_turn;
-  v_max_steps := least(v_round, 10);
+  v_max_steps := least(v_round + 4, 10);
   v_path := coalesce(p_action -> 'path', '[]'::jsonb);
   v_obstacles := coalesce(v_match.obstacles, '[]'::jsonb);
 
