@@ -57,7 +57,7 @@ export async function GET(request: Request, context: Context) {
       gridSize: 5,
       chaserPos,
       runnerPos,
-      obstacleCount: 5,
+      obstacleCount: 3,
       seed
     });
     const obstacleArray = Array.from(generated).map((key) => {
