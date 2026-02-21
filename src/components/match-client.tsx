@@ -737,7 +737,7 @@ export function MatchClient({ matchId }: Props) {
 
       const myPosLocal: Coord =
         mySlot === 1 ? displayBoard.p1 : (displayBoard.p2 as Coord);
-      const maxPointsLocal = Math.min(match.current_turn, 10);
+      const maxPointsLocal = Math.min(match.current_turn + 4, 10);
 
       setPlannedPath((prev) => {
         const end = prev.length > 0 ? prev[prev.length - 1] : myPosLocal;
