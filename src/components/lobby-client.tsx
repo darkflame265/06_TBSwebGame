@@ -27,6 +27,7 @@ type ProfileResponse = {
 export function LobbyClient() {
   const router = useRouter();
   const supabase = getBrowserSupabaseClient();
+  const [darkMode, setDarkMode] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [roomCode, setRoomCode] = useState("");
   const [createdRoom, setCreatedRoom] = useState<RoomCreateResponse | null>(null);
@@ -168,90 +169,170 @@ export function LobbyClient() {
   };
 
   return (
-    <main className="mx-auto min-h-screen max-w-3xl p-6">
-      <h1 className="text-3xl font-bold">1v1 TBS Lobby</h1>
-      <p className="mt-2 text-sm text-slate-600">Sign in, then start friend match or random matchmaking.</p>
-
-      <section className="mt-6 rounded-xl bg-white p-4 shadow-sm">
-        <h2 className="font-semibold">1) Guest Login</h2>
-        {userId ? (
-          <>
-            <p className="mt-2 text-sm text-emerald-700">Signed in: {userId}</p>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <input
-                value={nicknameInput}
-                onChange={(e) => setNicknameInput(e.target.value)}
-                placeholder="Nickname (2-24 chars)"
-                maxLength={24}
-                className="min-w-[220px] rounded-lg border border-slate-300 px-3 py-2"
-              />
-              <button
-                type="button"
-                onClick={saveNickname}
-                disabled={savingNickname || nicknameInput.trim().length < 2}
-                className="rounded-lg bg-slate-900 px-4 py-2 text-white disabled:cursor-not-allowed disabled:bg-slate-400"
-              >
-                {savingNickname ? "Saving..." : "Confirm"}
-              </button>
-            </div>
-            {savedNickname && <p className="mt-2 text-xs text-slate-600">Current nickname: {savedNickname}</p>}
-          </>
-        ) : (
+    <main
+      className={`min-h-screen transition-colors duration-300 ${darkMode ? "bg-[#1a1c18] text-white" : "bg-[#F2E8CF] text-slate-900"}`}
+    >
+      <div className="mx-auto max-w-3xl px-6 py-16 md:py-24">
+        <div className="fixed right-6 top-6 z-50">
           <button
-            onClick={signInGuest}
-            className="mt-3 rounded-lg bg-slate-900 px-4 py-2 text-white hover:bg-slate-700"
+            type="button"
+            onClick={() => setDarkMode((v) => !v)}
+            className={`rounded-full border p-3 shadow-lg transition ${
+              darkMode
+                ? "border-slate-700 bg-[#242822] text-slate-200"
+                : "border-slate-200 bg-white text-slate-600"
+            }`}
           >
-            Sign in anonymously
-          </button>
-        )}
-      </section>
-
-      <section className="mt-4 rounded-xl bg-white p-4 shadow-sm">
-        <h2 className="font-semibold">2) Friend Match</h2>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <button
-            onClick={createRoom}
-            disabled={!userId}
-            className="rounded-lg bg-blue-700 px-4 py-2 text-white disabled:cursor-not-allowed disabled:bg-slate-400"
-          >
-            Create room
-          </button>
-          <input
-            value={roomCode}
-            onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-            placeholder="Invite code"
-            className="rounded-lg border border-slate-300 px-3 py-2"
-          />
-          <button
-            onClick={joinRoom}
-            disabled={!userId || !roomCode}
-            className="rounded-lg bg-emerald-700 px-4 py-2 text-white disabled:cursor-not-allowed disabled:bg-slate-400"
-          >
-            Join by code
+            {darkMode ? "Light" : "Dark"}
           </button>
         </div>
-        {createdRoom && (
-          <p className="mt-3 text-sm">
-            Room code: <span className="font-mono font-semibold">{createdRoom.room_code}</span> |{" "}
-            <a className="text-blue-700 underline" href={`/match/${createdRoom.match_id}`}>
-              Open match
-            </a>
+
+        <header className="mb-12 text-center">
+          <h1 className="text-4xl font-extrabold tracking-tight md:text-5xl">1v1 TBS Lobby</h1>
+          <p className={`mt-4 text-lg ${darkMode ? "text-slate-400" : "text-slate-600"}`}>
+            Sign in, then start a friend match or join random matchmaking.
           </p>
-        )}
-      </section>
+        </header>
 
-      <section className="mt-4 rounded-xl bg-white p-4 shadow-sm">
-        <h2 className="font-semibold">3) Random Matchmaking</h2>
-        <button
-          onClick={joinMatchmaking}
-          disabled={!userId || queueing}
-          className="mt-3 rounded-lg bg-rose-700 px-4 py-2 text-white disabled:cursor-not-allowed disabled:bg-slate-400"
-        >
-          {queueing ? "Queueing..." : "Join queue"}
-        </button>
-      </section>
+        <div className="space-y-6">
+          <section
+            className={`rounded-3xl border p-8 shadow-sm transition ${
+              darkMode ? "border-slate-800 bg-[#242822]" : "border-slate-100 bg-white"
+            }`}
+          >
+            <div className="mb-6 flex items-center gap-3">
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#386641]/10 text-sm font-bold text-[#386641]">
+                1
+              </span>
+              <h2 className="text-xl font-bold">Guest Profile</h2>
+            </div>
 
-      {message && <p className="mt-4 rounded-lg bg-red-100 p-3 text-sm text-red-700">{message}</p>}
+            {userId ? (
+              <>
+                <p className="mb-4 text-xs font-medium text-[#386641]">Signed in: {userId}</p>
+                <div className="flex flex-col gap-3 md:flex-row">
+                  <div className="flex-grow">
+                    <input
+                      value={nicknameInput}
+                      onChange={(e) => setNicknameInput(e.target.value)}
+                      placeholder="Enter nickname..."
+                      maxLength={24}
+                      className={`w-full rounded-xl border px-4 py-3 transition ${
+                        darkMode
+                          ? "border-slate-700 bg-slate-800/50 text-white"
+                          : "border-slate-200 bg-slate-50 text-slate-900"
+                      }`}
+                    />
+                    <p className={`ml-1 mt-2 text-xs ${darkMode ? "text-slate-400" : "text-slate-500"}`}>
+                      Current nickname:{" "}
+                      <span className={darkMode ? "font-semibold text-slate-200" : "font-semibold text-slate-700"}>
+                        {savedNickname ?? "-"}
+                      </span>
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={saveNickname}
+                    disabled={savingNickname || nicknameInput.trim().length < 2}
+                    className="rounded-xl bg-[#386641] px-8 py-3 font-semibold text-white transition hover:bg-[#2a4d31] disabled:cursor-not-allowed disabled:bg-slate-400"
+                  >
+                    {savingNickname ? "Saving..." : "Confirm"}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={signInGuest}
+                className="rounded-xl bg-[#386641] px-6 py-3 font-semibold text-white transition hover:bg-[#2a4d31]"
+              >
+                Sign in anonymously
+              </button>
+            )}
+          </section>
+
+          <section
+            className={`rounded-3xl border p-8 shadow-sm transition ${
+              darkMode ? "border-slate-800 bg-[#242822]" : "border-slate-100 bg-white"
+            }`}
+          >
+            <div className="mb-6 flex items-center gap-3">
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#386641]/10 text-sm font-bold text-[#386641]">
+                2
+              </span>
+              <h2 className="text-xl font-bold">Friend Match</h2>
+            </div>
+            <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
+              <div className="space-y-3">
+                <p className={`ml-1 text-sm font-medium ${darkMode ? "text-slate-400" : "text-slate-500"}`}>
+                  Start a new match
+                </p>
+                <button
+                  onClick={createRoom}
+                  disabled={!userId}
+                  className="w-full rounded-xl bg-blue-600 px-6 py-4 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+                >
+                  Create Room
+                </button>
+              </div>
+              <div className="space-y-3">
+                <p className={`ml-1 text-sm font-medium ${darkMode ? "text-slate-400" : "text-slate-500"}`}>
+                  Enter invite code
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    value={roomCode}
+                    onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
+                    placeholder="INVITE-CODE"
+                    className={`flex-grow rounded-xl border px-4 py-3 uppercase tracking-widest placeholder:normal-case placeholder:tracking-normal ${
+                      darkMode
+                        ? "border-slate-700 bg-slate-800/50 text-white"
+                        : "border-slate-200 bg-slate-50 text-slate-900"
+                    }`}
+                  />
+                  <button
+                    onClick={joinRoom}
+                    disabled={!userId || !roomCode}
+                    className="rounded-xl bg-slate-500 px-6 py-3 font-semibold text-white transition hover:bg-slate-600 disabled:cursor-not-allowed disabled:bg-slate-400"
+                  >
+                    Join
+                  </button>
+                </div>
+              </div>
+            </div>
+            {createdRoom && (
+              <p className={`mt-4 text-sm ${darkMode ? "text-slate-300" : "text-slate-700"}`}>
+                Room code: <span className="font-mono font-bold">{createdRoom.room_code}</span> |{" "}
+                <a className="underline" href={`/match/${createdRoom.match_id}`}>
+                  Open match
+                </a>
+              </p>
+            )}
+          </section>
+
+          <section
+            className={`rounded-3xl border p-8 shadow-sm transition ${
+              darkMode ? "border-slate-800 bg-[#242822]" : "border-slate-100 bg-white"
+            }`}
+          >
+            <div className="mb-6 flex items-center gap-3">
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#386641]/10 text-sm font-bold text-[#386641]">
+                3
+              </span>
+              <h2 className="text-xl font-bold">Random Matchmaking</h2>
+            </div>
+            <button
+              onClick={joinMatchmaking}
+              disabled={!userId || queueing}
+              className="w-full rounded-xl bg-[#386641] px-8 py-5 text-lg font-bold text-white transition hover:bg-[#2a4d31] disabled:cursor-not-allowed disabled:bg-slate-400"
+            >
+              {queueing ? "Queueing..." : "Join Matchmaking Queue"}
+            </button>
+          </section>
+        </div>
+
+        {message && <p className="mt-4 rounded-lg bg-red-100 p-3 text-sm text-red-700">{message}</p>}
+      </div>
     </main>
   );
 }
