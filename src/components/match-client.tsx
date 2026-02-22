@@ -28,8 +28,8 @@ const BLUE_PATH_STROKE = 5;
 const SUBMIT_BUFFER_MS = 3000;
 const PLANNING_TOTAL_MS = 10000;
 const PLANNING_UI_MS = PLANNING_TOTAL_MS - SUBMIT_BUFFER_MS;
-const CELL_SIZE = 56;
-const CELL_GAP = 4;
+const CELL_SIZE = 86;
+const CELL_GAP = 8;
 const BOARD_PX = BOARD_SIZE * CELL_SIZE + (BOARD_SIZE - 1) * CELL_GAP;
 const DEFAULT_BOARD: DisplayBoard = { p1: [0, 2], p2: [4, 2] };
 
@@ -984,23 +984,40 @@ export function MatchClient({ matchId }: Props) {
   const p2UserId = p2Player?.user_id ?? "-";
   const p1Name = p1Player?.nickname?.trim() || p1UserId;
   const p2Name = p2Player?.nickname?.trim() || p2UserId;
+  const pathGaugeSegments = Array.from({ length: maxPoints }).map(
+    (_, idx) => idx < remainingPathPoints,
+  );
 
   return (
-    <main className="mx-auto min-h-screen max-w-5xl p-6">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-3xl font-bold">Match {match.id}</h1>
-        <div className="flex items-center gap-2">
+    <main className="min-h-screen bg-[#F2E8CF] text-slate-800">
+      <header className="mx-auto max-w-7xl px-6 pb-2 pt-8">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="flex items-center gap-2 text-3xl font-bold tracking-tight text-slate-900">
+              <span className="text-[#386641]">🕹️</span>
+              Match{" "}
+              <span className="font-mono text-xl font-medium text-slate-500">
+                {match.id}
+              </span>
+            </h1>
+            <p className="mt-2 text-sm text-slate-600">
+              Status: {match.status} | Phase: {match.phase} | Round:{" "}
+              {match.current_turn} | Piece: {myColor} | Role: {myRole} | Max
+              path points: {maxPoints}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => setMuted((v) => !v)}
-            className="rounded-lg bg-slate-700 px-3 py-2 text-sm text-white"
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm"
           >
-            {muted ? "Unmute SFX" : "Mute SFX"}
+            {muted ? "SFX Off" : "SFX On"}
           </button>
           <button
             onClick={leaveMatch}
             disabled={leaving}
-            className="rounded-lg bg-red-700 px-4 py-2 text-white disabled:cursor-not-allowed disabled:bg-slate-400"
+            className="rounded-lg bg-[#bc4749] px-4 py-2 text-white shadow-sm disabled:cursor-not-allowed disabled:bg-slate-400"
           >
             {leaving
               ? "Leaving..."
@@ -1009,39 +1026,35 @@ export function MatchClient({ matchId }: Props) {
                 : "Leave match"}
           </button>
         </div>
-      </div>
-
-      <div className="mt-3 rounded-xl bg-white p-4 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-sm text-slate-700">
-            Status: {match.status} | Phase: {match.phase} | Round:{" "}
-            {match.current_turn} | Piece: {myColor} | Role: {myRole} | Max path
-            points: {maxPoints}
-          </p>
-          <p className="font-mono text-sm font-semibold text-slate-900">
-            {isMovingUi ? "moving..." : `${match.phase} timer: ${secondsLeft}s`}
-          </p>
         </div>
-        <div className="mt-2 h-2 w-full overflow-hidden rounded bg-slate-200">
+        <div className="rounded-xl border border-slate-200/70 bg-white p-4 shadow-sm">
+          <div className="mb-2 flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-500">
+            <span>{match.phase} phase</span>
+            <span className="text-[#386641]">
+              {isMovingUi ? "moving..." : `timer: ${secondsLeft}s`}
+            </span>
+          </div>
+          <div className="h-1.5 w-full overflow-hidden rounded bg-slate-200">
           <div
-            className="h-full bg-emerald-500"
+            className="h-full bg-[#386641]"
             style={{
               width: `${Math.max(0, Math.min(100, ((isMovingUi ? 0 : shownMillisLeft) / timerBarBase) * 100))}%`,
             }}
           />
+          </div>
         </div>
-      </div>
+      </header>
 
       {isFinished && (
         <div
-          className={`mt-3 rounded-xl p-4 text-center text-2xl font-extrabold ${iWon ? "bg-emerald-100 text-emerald-700" : iLost ? "bg-rose-100 text-rose-700" : "bg-slate-100 text-slate-700"}`}
+          className={`mx-auto mt-3 max-w-7xl rounded-xl p-4 text-center text-2xl font-extrabold ${iWon ? "bg-emerald-100 text-emerald-700" : iLost ? "bg-rose-100 text-rose-700" : "bg-slate-100 text-slate-700"}`}
         >
           {iWon ? "YOU WIN" : iLost ? "YOU LOSE" : "MATCH FINISHED"}
         </div>
       )}
 
       {isFinished && (
-        <div className="mt-3 rounded-xl bg-white p-4 shadow-sm">
+        <div className="mx-auto mt-3 max-w-7xl rounded-xl bg-white p-4 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <button
               type="button"
@@ -1089,113 +1102,114 @@ export function MatchClient({ matchId }: Props) {
         </div>
       )}
 
-      <div className="mt-4 flex flex-col gap-4 xl:flex-row xl:items-start">
-      <section className="rounded-xl bg-white p-4 shadow-sm xl:flex-1">
-        <h2 className="font-semibold">Board 5x5</h2>
-        <div className="mt-2 grid max-w-md grid-cols-2 gap-2 text-sm">
-          <div className="relative min-w-0">
-            <button
-              type="button"
-              onClick={() =>
-                setOpenProfileSlot((prev) => (prev === 1 ? null : 1))
-              }
-              className="w-full rounded border border-slate-200 bg-slate-50 px-3 py-2 text-left"
-              title={p1Name}
-            >
-              <p className="truncate font-medium text-slate-700">
-                {mySlot === 1 ? `(Me) ${p1Name}` : p1Name}
-              </p>
-            </button>
-            {openProfileSlot === 1 && (
-              <div className="absolute left-0 right-0 z-20 mt-1 rounded border border-slate-200 bg-white p-2 text-xs text-slate-700 shadow">
-                Guest ID: <span className="font-mono">{p1UserId}</span>
-              </div>
-            )}
-          </div>
-          <div className="relative min-w-0">
-            <button
-              type="button"
-              onClick={() =>
-                setOpenProfileSlot((prev) => (prev === 2 ? null : 2))
-              }
-              className="w-full rounded border border-slate-200 bg-slate-50 px-3 py-2 text-left"
-              title={p2Name}
-            >
-              <p className="truncate font-medium text-slate-700">
-                {mySlot === 2 ? `(Me) ${p2Name}` : p2Name}
-              </p>
-            </button>
-            {openProfileSlot === 2 && (
-              <div className="absolute left-0 right-0 z-20 mt-1 rounded border border-slate-200 bg-white p-2 text-xs text-slate-700 shadow">
-                Guest ID: <span className="font-mono">{p2UserId}</span>
-              </div>
-            )}
-          </div>
-          <div className="col-span-2 rounded border border-slate-200 bg-slate-50 px-3 py-2">
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-1">
-                <span
-                  className={`rounded px-1.5 py-0.5 text-xs ${
-                    mySlot === 1
-                      ? "bg-red-500 font-bold text-white"
-                      : "font-medium text-slate-600"
-                  }`}
+      <main className="mx-auto mt-4 grid max-w-7xl grid-cols-1 gap-8 px-6 pb-10 lg:grid-cols-12">
+      <section className="rounded-2xl border border-slate-200/60 bg-white p-6 shadow-sm lg:col-span-8">
+        <div className="mb-8 flex items-center justify-between">
+          <h2 className="text-xl font-bold">Board 5x5</h2>
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-3">
+              <div className="text-right">
+                <p
+                  className="max-w-[140px] truncate text-[10px] font-bold uppercase text-red-600"
+                  title={p1Name}
                 >
-                  Red HP:
-                </span>
-                {heartsForHp(displayHp.p1).map((filled, idx) => (
-                  <span
-                    key={`p1-heart-${idx}-${shakingHeart?.nonce ?? 0}`}
-                    className={`text-lg text-rose-500 ${filled ? "opacity-100" : "opacity-25"} ${
-                      shakingHeart?.slot === 1 && shakingHeart.index === idx
-                        ? "heart-shake"
-                        : ""
-                    }`}
-                  >
-                    {"\u2665"}
-                  </span>
-                ))}
+                  {p1Name}
+                </p>
+                <div className="mt-0.5 flex justify-end gap-0.5">
+                  {heartsForHp(displayHp.p1).map((filled, idx) => (
+                    <span
+                      key={`p1-heart-header-${idx}-${shakingHeart?.nonce ?? 0}`}
+                      className={`text-lg text-rose-500 ${filled ? "opacity-100" : "opacity-25"} ${
+                        shakingHeart?.slot === 1 && shakingHeart.index === idx
+                          ? "heart-shake"
+                          : ""
+                      }`}
+                    >
+                      {"\u2665"}
+                    </span>
+                  ))}
+                </div>
               </div>
-              <div className="rounded bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">
-                Path Points: {remainingPathPoints}/{maxPoints}
-              </div>
-              <div className="flex items-center gap-1">
-                <span
-                  className={`rounded px-1.5 py-0.5 text-xs ${
-                    mySlot === 2
-                      ? "bg-blue-500 font-bold text-white"
-                      : "font-medium text-slate-600"
-                  }`}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setOpenProfileSlot((prev) => (prev === 1 ? null : 1))
+                  }
+                  className="relative flex h-10 w-10 items-center justify-center rounded-full border-2 border-red-500 bg-red-50 text-red-500"
+                  title={p1Name}
                 >
-                  Blue HP:
-                </span>
-                {heartsForHp(displayHp.p2).map((filled, idx) => (
-                  <span
-                    key={`p2-heart-${idx}-${shakingHeart?.nonce ?? 0}`}
-                    className={`text-lg text-rose-500 ${filled ? "opacity-100" : "opacity-25"} ${
-                      shakingHeart?.slot === 2 && shakingHeart.index === idx
-                        ? "heart-shake"
-                        : ""
-                    }`}
-                  >
-                    {"\u2665"}
-                  </span>
-                ))}
+                  <span>◎</span>
+                </button>
+                {openProfileSlot === 1 && (
+                  <div className="absolute -bottom-[90px] left-1/2 z-20 w-[320px] -translate-x-1/2 rounded border border-slate-200 bg-white p-3 text-xs text-slate-700 shadow">
+                    <p className="select-text font-semibold">{p1Name}</p>
+                    <p className="mt-1 select-text break-all font-mono text-[11px]">
+                      Guest: {p1UserId}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="h-8 w-px bg-slate-200" />
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setOpenProfileSlot((prev) => (prev === 2 ? null : 2))
+                  }
+                  className="relative flex h-10 w-10 items-center justify-center rounded-full border-2 border-blue-500 bg-blue-50 text-blue-500"
+                  title={p2Name}
+                >
+                  <span>◎</span>
+                </button>
+                {openProfileSlot === 2 && (
+                  <div className="absolute -bottom-[90px] left-1/2 z-20 w-[320px] -translate-x-1/2 rounded border border-slate-200 bg-white p-3 text-xs text-slate-700 shadow">
+                    <p className="select-text font-semibold">{p2Name}</p>
+                    <p className="mt-1 select-text break-all font-mono text-[11px]">
+                      Guest: {p2UserId}
+                    </p>
+                  </div>
+                )}
+              </div>
+              <div>
+                <p
+                  className="max-w-[140px] truncate text-[10px] font-bold uppercase text-blue-500"
+                  title={p2Name}
+                >
+                  {p2Name}
+                </p>
+                <div className="mt-0.5 flex gap-0.5">
+                  {heartsForHp(displayHp.p2).map((filled, idx) => (
+                    <span
+                      key={`p2-heart-header-${idx}-${shakingHeart?.nonce ?? 0}`}
+                      className={`text-lg text-rose-500 ${filled ? "opacity-100" : "opacity-25"} ${
+                        shakingHeart?.slot === 2 && shakingHeart.index === idx
+                          ? "heart-shake"
+                          : ""
+                      }`}
+                    >
+                      {"\u2665"}
+                    </span>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
         </div>
-        <div className="mt-3 flex items-start gap-6">
+        <div className="mt-5 flex items-start gap-8">
           <div
             className="relative"
             style={{ width: BOARD_PX, height: BOARD_PX }}
           >
             <div
-              className="grid gap-1"
+              className="grid"
               style={{
                 width: BOARD_PX,
                 height: BOARD_PX,
                 gridTemplateColumns: `repeat(${BOARD_SIZE}, minmax(0, 1fr))`,
+                gap: `${CELL_GAP}px`,
               }}
             >
               {Array.from({ length: BOARD_SIZE }).map((_, row) =>
@@ -1209,10 +1223,10 @@ export function MatchClient({ matchId }: Props) {
                         onPointerDown={() => beginPathDrag(row, col)}
                         onPointerEnter={() => extendOrRewindPath(row, col)}
                         onPointerUp={() => setDraggingPath(false)}
-                        className={`rounded border border-slate-300 text-[10px] ${
+                        className={`relative rounded-lg border text-[10px] ${
                           isObstacle
-                            ? "cursor-not-allowed bg-slate-800 text-slate-300"
-                            : `bg-white text-slate-500 ${canPlan ? "hover:bg-slate-100" : "cursor-default"}`
+                            ? "cursor-not-allowed border-slate-700 bg-slate-800 text-slate-300"
+                            : `border-slate-200 bg-slate-50 text-slate-500 ${canPlan ? "hover:bg-slate-100" : "cursor-default"}`
                         }`}
                         style={{ width: CELL_SIZE, height: CELL_SIZE }}
                       >
@@ -1327,10 +1341,13 @@ export function MatchClient({ matchId }: Props) {
               />
             )}
           </div>
-          <div className="min-w-[120px] rounded-xl border border-slate-200 bg-white p-3 text-center text-slate-700 shadow-sm">
-            <p className="text-xs font-semibold text-slate-500">YOUR ROLE</p>
+          <div className="w-[260px] min-w-[260px] space-y-4">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-center text-slate-700">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                YOUR ROLE
+              </p>
             <div
-              className={`mx-auto mt-2 flex h-20 w-20 items-center justify-center rounded-full ${myRole === "ATTACK" ? "bg-red-50 text-red-600" : "bg-blue-50 text-blue-600"}`}
+              className={`mx-auto mt-3 flex h-20 w-20 items-center justify-center rounded-full border-4 ${myRole === "ATTACK" ? "border-red-200 bg-red-50 text-red-600" : "border-blue-200 bg-blue-50 text-blue-600"}`}
             >
               {myRole === "ATTACK" ? <SwordIcon /> : <RunIcon />}
             </div>
@@ -1339,18 +1356,44 @@ export function MatchClient({ matchId }: Props) {
             >
               {myRole}
             </p>
+            </div>
+            <div className="rounded-xl border border-green-200 bg-green-50 p-3">
+              <div className="mb-1 flex items-center justify-between">
+                <span className="text-xs font-semibold text-[#386641]">
+                  Path Points
+                </span>
+                <span className="text-xs font-bold text-[#386641]">
+                  {remainingPathPoints} / {maxPoints}
+                </span>
+              </div>
+              <div className="flex gap-1">
+                {pathGaugeSegments.map((filled, idx) => (
+                  <div
+                    key={`path-seg-${idx}`}
+                    className={`h-1.5 flex-1 rounded-full ${filled ? "bg-[#386641]" : "bg-[#b9c7bd]"}`}
+                  />
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      <aside className="rounded-xl bg-white p-4 shadow-sm xl:w-[320px] xl:shrink-0">
-        <h2 className="font-semibold">Match Chat</h2>
+      <aside className="flex h-[620px] flex-col overflow-hidden rounded-2xl border border-slate-200/60 bg-white shadow-sm lg:col-span-4">
+        <div className="flex items-center justify-between border-b border-slate-100 p-4">
+          <h2 className="font-semibold text-lg">Match Chat</h2>
+          <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold uppercase text-green-700">
+            Live
+          </span>
+        </div>
         <div
           ref={chatScrollRef}
-          className="mt-3 h-[420px] overflow-y-auto rounded border border-slate-200 bg-slate-50 p-2"
+          className="flex-1 overflow-y-auto bg-slate-50 p-3"
         >
           {chatMessages.length === 0 ? (
-            <p className="text-sm text-slate-500">No messages yet.</p>
+            <div className="py-12 text-center text-sm text-slate-500">
+              No messages yet. Say hi to your opponent!
+            </div>
           ) : (
             <ul className="space-y-1">
               {chatMessages.map((msg) => {
@@ -1369,7 +1412,8 @@ export function MatchClient({ matchId }: Props) {
             </ul>
           )}
         </div>
-        <div className="mt-3 flex gap-2">
+        <div className="border-t border-slate-100 bg-slate-50 p-3">
+          <div className="flex gap-2">
           <input
             ref={chatInputRef}
             value={chatInput}
@@ -1382,25 +1426,30 @@ export function MatchClient({ matchId }: Props) {
             }}
             maxLength={300}
             placeholder="Type a message..."
-            className="flex-1 rounded border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500"
+            className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-[#386641]"
           />
           <button
             type="button"
             onClick={() => void sendChat()}
             disabled={sendingChat || chatInput.trim().length === 0}
-            className="rounded bg-slate-800 px-3 py-2 text-sm text-white disabled:cursor-not-allowed disabled:bg-slate-400"
+            className="rounded-lg bg-[#386641] px-3 py-2 text-sm text-white disabled:cursor-not-allowed disabled:bg-slate-400"
           >
-            Send
+            ➤
           </button>
+          </div>
         </div>
       </aside>
-      </div>
+      </main>
 
       {message && (
-        <p className="mt-4 rounded-lg bg-red-100 p-3 text-sm text-red-700">
+        <p className="mx-auto mt-4 max-w-7xl rounded-lg bg-red-100 p-3 text-sm text-red-700">
           {message}
         </p>
       )}
+
+      <footer className="mx-auto max-w-7xl px-6 pb-12 pt-6 text-center text-sm text-slate-400">
+        <p>© 2024 TBS Arena</p>
+      </footer>
 
       <style jsx global>{`
         .hit-blink {
