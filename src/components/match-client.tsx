@@ -40,6 +40,9 @@ const CELL_SIZE = 86;
 const CELL_GAP = 8;
 const BOARD_PX = BOARD_SIZE * CELL_SIZE + (BOARD_SIZE - 1) * CELL_GAP;
 const DEFAULT_BOARD: DisplayBoard = { p1: [0, 2], p2: [4, 2] };
+const SIDE_PANEL_WIDTH = 260;
+const BOARD_CLUSTER_GAP = 32;
+const BOARD_CLUSTER_BASE_WIDTH = BOARD_PX + BOARD_CLUSTER_GAP + SIDE_PANEL_WIDTH;
 const CHAT_MATCH_WINDOW_MS = 15000;
 const CHAT_KEEP_MISSING_REALTIME_MS = 5000;
 
@@ -224,6 +227,8 @@ export function MatchClient({ matchId }: Props) {
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
   const chatInputRef = useRef<HTMLInputElement | null>(null);
   const matchRef = useRef<MatchResponse | null>(null);
+  const boardClusterHostRef = useRef<HTMLDivElement | null>(null);
+  const [boardClusterScale, setBoardClusterScale] = useState(1);
 
   const mySlot = useMemo(() => {
     if (!match || !me) return null;
@@ -721,6 +726,27 @@ export function MatchClient({ matchId }: Props) {
     if (!node) return;
     node.scrollTop = node.scrollHeight;
   }, [chatMessages]);
+
+  useEffect(() => {
+    const host = boardClusterHostRef.current;
+    if (!host) return;
+
+    const resize = () => {
+      const hostWidth = host.clientWidth;
+      if (!hostWidth) return;
+      const nextScale = Math.min(1, hostWidth / BOARD_CLUSTER_BASE_WIDTH);
+      setBoardClusterScale(nextScale);
+    };
+
+    resize();
+    const observer = new ResizeObserver(() => resize());
+    observer.observe(host);
+    window.addEventListener("resize", resize);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", resize);
+    };
+  }, []);
 
   useEffect(() => {
     if (!me) return;
@@ -1354,7 +1380,16 @@ export function MatchClient({ matchId }: Props) {
             </div>
           </div>
         </div>
-        <div className="mt-5 flex items-start gap-8">
+        <div ref={boardClusterHostRef} className="mt-5 w-full">
+          <div style={{ height: BOARD_PX * boardClusterScale }}>
+            <div
+              className="flex items-start gap-8"
+              style={{
+                width: BOARD_CLUSTER_BASE_WIDTH,
+                transform: `scale(${boardClusterScale})`,
+                transformOrigin: "top left",
+              }}
+            >
           <div
             className="relative"
             style={{ width: BOARD_PX, height: BOARD_PX }}
@@ -1497,7 +1532,10 @@ export function MatchClient({ matchId }: Props) {
               />
             )}
           </div>
-          <div className="w-[260px] min-w-[260px] space-y-4">
+          <div
+            className="space-y-4"
+            style={{ width: SIDE_PANEL_WIDTH, minWidth: SIDE_PANEL_WIDTH }}
+          >
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-center text-slate-700">
               <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
                 YOUR ROLE
@@ -1530,6 +1568,8 @@ export function MatchClient({ matchId }: Props) {
                   />
                 ))}
               </div>
+            </div>
+          </div>
             </div>
           </div>
         </div>
