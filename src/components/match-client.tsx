@@ -478,14 +478,15 @@ export function MatchClient({ matchId }: Props) {
         setDisplayHp({ p1: data.p1_hp, p2: data.p2_hp });
       }
 
+      const hasPendingResolveAnimation =
+        data.phase === "resolving" &&
+        !!data.resolved_paths &&
+        animatedTurnRef.current !== data.resolved_paths.turn;
+
       if (
         data.status === "finished" &&
-        !(
-          data.phase === "resolving" &&
-          data.resolved_paths &&
-          animatedTurnRef.current !== data.resolved_paths.turn &&
-          !animatingRef.current
-        )
+        !hasPendingResolveAnimation &&
+        !animatingRef.current
       ) {
         setResultReady(true);
       }
