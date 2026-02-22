@@ -208,6 +208,7 @@ export function MatchClient({ matchId }: Props) {
   const [chatMessages, setChatMessages] = useState<LocalChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [sendingChat, setSendingChat] = useState(false);
+  const [resultReady, setResultReady] = useState(false);
 
   const prevMatchRef = useRef<MatchResponse | null>(null);
   const animatingRef = useRef(false);
@@ -314,6 +315,7 @@ export function MatchClient({ matchId }: Props) {
     p2Path: Coord[],
     meta: CollisionMeta,
     turn: number,
+    revealResultOnImpact: boolean,
   ) => {
     const steps = Math.max(p1Path.length, p2Path.length);
     const immediateCollision =
@@ -330,6 +332,7 @@ export function MatchClient({ matchId }: Props) {
     if (immediateCollision) {
       didTriggerHit = true;
       triggerImpactFx(meta);
+      if (revealResultOnImpact) setResultReady(true);
       if (meta.hitSlot === 1) {
         setDisplayHp((hp) => {
           const next = Math.max(hp.p1 - 1, 0);
@@ -392,6 +395,7 @@ export function MatchClient({ matchId }: Props) {
         const delay = Math.round(STEP_ANIMATION_MS * clamp01(collisionT));
         if (delay > 0) await sleep(delay);
         triggerImpactFx(meta);
+        if (revealResultOnImpact) setResultReady(true);
         if (meta.hitSlot === 1) {
           setDisplayHp((hp) => {
             const next = Math.max(hp.p1 - 1, 0);
@@ -413,6 +417,10 @@ export function MatchClient({ matchId }: Props) {
       }
     }
 
+    if (revealResultOnImpact && !didTriggerHit) {
+      setResultReady(true);
+    }
+
     setAnimating(false);
     animatingRef.current = false;
     setFrozenTimerMs(null);
@@ -427,6 +435,10 @@ export function MatchClient({ matchId }: Props) {
       const data = await apiGet<MatchResponse>(`/api/matches/${matchId}`);
       const nextBoard = data.board_state ?? DEFAULT_BOARD;
       const prev = prevMatchRef.current;
+
+      if (data.status !== "finished" && resultReady) {
+        setResultReady(false);
+      }
 
       if (!prev) {
         setDisplayBoard(nextBoard);
@@ -458,11 +470,24 @@ export function MatchClient({ matchId }: Props) {
             collisionT: data.resolved_paths.collision_t ?? null,
           },
           data.resolved_paths.turn,
+          data.status === "finished",
         );
         animatedTurnRef.current = data.resolved_paths.turn;
       } else if (!animatingRef.current) {
         setDisplayBoard(nextBoard);
         setDisplayHp({ p1: data.p1_hp, p2: data.p2_hp });
+      }
+
+      if (
+        data.status === "finished" &&
+        !(
+          data.phase === "resolving" &&
+          data.resolved_paths &&
+          animatedTurnRef.current !== data.resolved_paths.turn &&
+          !animatingRef.current
+        )
+      ) {
+        setResultReady(true);
       }
 
       if (prev && prev.phase === "resolving" && data.phase === "planning") {
@@ -1051,6 +1076,7 @@ export function MatchClient({ matchId }: Props) {
   const timerBarBase =
     match.phase === "planning" ? PLANNING_UI_MS : PLANNING_TOTAL_MS;
   const isFinished = match.status === "finished";
+  const showResult = isFinished && resultReady;
   const iWon = isFinished && mySlot !== null && match.winner_slot === mySlot;
   const iLost =
     isFinished &&
@@ -1174,7 +1200,7 @@ export function MatchClient({ matchId }: Props) {
         </div>
       </header>
 
-      {isFinished && (
+      {showResult && (
         <div
           className={`mx-auto mt-3 max-w-7xl rounded-xl p-4 text-center text-2xl font-extrabold ${iWon ? "bg-emerald-100 text-emerald-700" : iLost ? "bg-rose-100 text-rose-700" : "bg-slate-100 text-slate-700"}`}
         >
@@ -1182,7 +1208,7 @@ export function MatchClient({ matchId }: Props) {
         </div>
       )}
 
-      {isFinished && (
+      {showResult && (
         <div className="mx-auto mt-3 max-w-7xl rounded-xl bg-white p-4 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <button
