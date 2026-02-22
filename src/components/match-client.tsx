@@ -40,6 +40,8 @@ const CELL_SIZE = 86;
 const CELL_GAP = 8;
 const BOARD_PX = BOARD_SIZE * CELL_SIZE + (BOARD_SIZE - 1) * CELL_GAP;
 const DEFAULT_BOARD: DisplayBoard = { p1: [0, 2], p2: [4, 2] };
+const CHAT_MATCH_WINDOW_MS = 15000;
+const CHAT_KEEP_MISSING_REALTIME_MS = 5000;
 
 const sameCoord = (a: Coord, b: Coord) => a[0] === b[0] && a[1] === b[1];
 const isOrthogonalStep = (from: Coord, to: Coord) =>
@@ -69,6 +71,17 @@ const parsePath = (value: unknown): Coord[] => {
   }
   return out;
 };
+const toMs = (iso: string) => {
+  const v = Date.parse(iso);
+  return Number.isNaN(v) ? 0 : v;
+};
+const isLikelySameChat = (
+  a: Pick<MatchChatMessage, "user_id" | "message" | "created_at">,
+  b: Pick<MatchChatMessage, "user_id" | "message" | "created_at">,
+) =>
+  a.user_id === b.user_id &&
+  a.message === b.message &&
+  Math.abs(toMs(a.created_at) - toMs(b.created_at)) <= CHAT_MATCH_WINDOW_MS;
 const isTypingTarget = (target: EventTarget | null) => {
   if (!(target instanceof HTMLElement)) return false;
   const tag = target.tagName.toLowerCase();
@@ -498,9 +511,23 @@ export function MatchClient({ matchId }: Props) {
     };
     setChatMessages((prev) => {
       if (prev.some((m) => m.id === message.id)) return prev;
-      return [...prev, message].sort(
-        (a, b) => Date.parse(a.created_at) - Date.parse(b.created_at),
+
+      const optimisticIdx = prev.findIndex(
+        (m) => !!m.optimistic && isLikelySameChat(m, message),
       );
+      if (optimisticIdx >= 0) {
+        const next = [...prev];
+        next[optimisticIdx] = message;
+        return next.sort((a, b) => {
+          const t = toMs(a.created_at) - toMs(b.created_at);
+          return t !== 0 ? t : a.id - b.id;
+        });
+      }
+
+      return [...prev, message].sort((a, b) => {
+        const t = toMs(a.created_at) - toMs(b.created_at);
+        return t !== 0 ? t : a.id - b.id;
+      });
     });
   };
 
@@ -508,20 +535,39 @@ export function MatchClient({ matchId }: Props) {
     try {
       const data = await apiGet<MatchChatMessage[]>(`/api/matches/${matchId}/chat`);
       setChatMessages((prev) => {
-        const optimistic = prev.filter((m) => m.optimistic);
-        const unresolved = optimistic.filter((pending) => {
-          const pendingTime = Date.parse(pending.created_at);
-          return !data.some((real) => {
-            if (real.user_id !== pending.user_id) return false;
-            if (real.message !== pending.message) return false;
-            const realTime = Date.parse(real.created_at);
-            if (Number.isNaN(pendingTime) || Number.isNaN(realTime)) return true;
-            return realTime >= pendingTime - 10000;
-          });
+        const now = Date.now();
+        const merged: LocalChatMessage[] = [...data];
+
+        for (const pending of prev) {
+          if (!pending.optimistic) continue;
+          const hasRealMatch = data.some((real) => isLikelySameChat(real, pending));
+          if (hasRealMatch) continue;
+          if (now - toMs(pending.created_at) <= CHAT_MATCH_WINDOW_MS) {
+            merged.push(pending);
+          }
+        }
+
+        for (const local of prev) {
+          if (local.optimistic) continue;
+          const existsInFetched = data.some((real) => real.id === local.id);
+          if (existsInFetched) continue;
+          if (now - toMs(local.created_at) <= CHAT_KEEP_MISSING_REALTIME_MS) {
+            merged.push(local);
+          }
+        }
+
+        const byId = new Map<number, LocalChatMessage>();
+        for (const msg of merged) {
+          const prevMsg = byId.get(msg.id);
+          if (!prevMsg || (prevMsg.optimistic && !msg.optimistic)) {
+            byId.set(msg.id, msg);
+          }
+        }
+
+        return Array.from(byId.values()).sort((a, b) => {
+          const t = toMs(a.created_at) - toMs(b.created_at);
+          return t !== 0 ? t : a.id - b.id;
         });
-        return [...data, ...unresolved].sort(
-          (a, b) => Date.parse(a.created_at) - Date.parse(b.created_at),
-        );
       });
     } catch {
       // keep gameplay stable even when chat fails
