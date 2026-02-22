@@ -20,6 +20,13 @@ type CollisionMeta = {
   collisionT: number | null;
 };
 type LocalChatMessage = MatchChatMessage & { optimistic?: boolean };
+type ChatRealtimeRow = {
+  id: number;
+  match_id: string;
+  user_id: string;
+  message: string;
+  created_at: string;
+};
 
 const BOARD_SIZE = 5;
 const STEP_ANIMATION_MS = 320;
@@ -202,6 +209,7 @@ export function MatchClient({ matchId }: Props) {
   const requestRematchRef = useRef<() => void>(() => {});
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
   const chatInputRef = useRef<HTMLInputElement | null>(null);
+  const matchRef = useRef<MatchResponse | null>(null);
 
   const mySlot = useMemo(() => {
     if (!match || !me) return null;
@@ -471,12 +479,29 @@ export function MatchClient({ matchId }: Props) {
       }
 
       prevMatchRef.current = data;
+      matchRef.current = data;
       setMatch(data);
     } catch (error) {
       setMessage(
         error instanceof Error ? error.message : "Failed to load match",
       );
     }
+  };
+
+  const pushIncomingChat = (row: ChatRealtimeRow) => {
+    const nickname =
+      matchRef.current?.players.find((p) => p.user_id === row.user_id)?.nickname ??
+      null;
+    const message: LocalChatMessage = {
+      ...row,
+      nickname,
+    };
+    setChatMessages((prev) => {
+      if (prev.some((m) => m.id === message.id)) return prev;
+      return [...prev, message].sort(
+        (a, b) => Date.parse(a.created_at) - Date.parse(b.created_at),
+      );
+    });
   };
 
   const loadChat = async () => {
@@ -538,7 +563,7 @@ export function MatchClient({ matchId }: Props) {
   }, [matchId]);
 
   useEffect(() => {
-    const poll = setInterval(() => loadChat(), 1000);
+    const poll = setInterval(() => loadChat(), 500);
     return () => clearInterval(poll);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchId]);
@@ -590,7 +615,26 @@ export function MatchClient({ matchId }: Props) {
           table: "match_chat_messages",
           filter: `match_id=eq.${matchId}`,
         },
-        () => loadChat(),
+        (payload) => {
+          const row = payload.new as Partial<ChatRealtimeRow>;
+          if (
+            typeof row.id !== "number" ||
+            typeof row.match_id !== "string" ||
+            typeof row.user_id !== "string" ||
+            typeof row.message !== "string" ||
+            typeof row.created_at !== "string"
+          ) {
+            void loadChat();
+            return;
+          }
+          pushIncomingChat({
+            id: row.id,
+            match_id: row.match_id,
+            user_id: row.user_id,
+            message: row.message,
+            created_at: row.created_at,
+          });
+        },
       )
       .subscribe();
 
