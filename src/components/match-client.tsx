@@ -19,6 +19,7 @@ type CollisionMeta = {
   collisionStep: number | null;
   collisionT: number | null;
 };
+type LocalChatMessage = MatchChatMessage & { optimistic?: boolean };
 
 const BOARD_SIZE = 5;
 const STEP_ANIMATION_MS = 320;
@@ -184,7 +185,7 @@ export function MatchClient({ matchId }: Props) {
   const [openProfileSlot, setOpenProfileSlot] = useState<1 | 2 | null>(null);
   const [onlineUserIds, setOnlineUserIds] = useState<string[]>([]);
   const [presenceReady, setPresenceReady] = useState(false);
-  const [chatMessages, setChatMessages] = useState<MatchChatMessage[]>([]);
+  const [chatMessages, setChatMessages] = useState<LocalChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [sendingChat, setSendingChat] = useState(false);
 
@@ -481,7 +482,22 @@ export function MatchClient({ matchId }: Props) {
   const loadChat = async () => {
     try {
       const data = await apiGet<MatchChatMessage[]>(`/api/matches/${matchId}/chat`);
-      setChatMessages(data);
+      setChatMessages((prev) => {
+        const optimistic = prev.filter((m) => m.optimistic);
+        const unresolved = optimistic.filter((pending) => {
+          const pendingTime = Date.parse(pending.created_at);
+          return !data.some((real) => {
+            if (real.user_id !== pending.user_id) return false;
+            if (real.message !== pending.message) return false;
+            const realTime = Date.parse(real.created_at);
+            if (Number.isNaN(pendingTime) || Number.isNaN(realTime)) return true;
+            return realTime >= pendingTime - 10000;
+          });
+        });
+        return [...data, ...unresolved].sort(
+          (a, b) => Date.parse(a.created_at) - Date.parse(b.created_at),
+        );
+      });
     } catch {
       // keep gameplay stable even when chat fails
     }
@@ -879,17 +895,40 @@ export function MatchClient({ matchId }: Props) {
 
   const sendChat = async () => {
     const next = chatInput.trim();
-    if (!next || sendingChat) return;
+    if (!next) return;
     if (next.length > 300) {
       setMessage("Chat message must be 300 characters or less");
       return;
     }
+    const nowIso = new Date().toISOString();
+    const myNickname =
+      me && match
+        ? match.players.find((p) => p.user_id === me)?.nickname ?? null
+        : null;
+    const optimisticId = -Date.now() - Math.floor(Math.random() * 1000);
+    const optimisticMessage: LocalChatMessage = {
+      id: optimisticId,
+      match_id: matchId,
+      user_id: me ?? "me",
+      nickname: myNickname,
+      message: next,
+      created_at: nowIso,
+      optimistic: true,
+    };
+
+    setChatMessages((prev) =>
+      [...prev, optimisticMessage].sort(
+        (a, b) => Date.parse(a.created_at) - Date.parse(b.created_at),
+      ),
+    );
+    setChatInput("");
     setSendingChat(true);
+
     try {
       await apiPost(`/api/matches/${matchId}/chat`, { message: next });
-      setChatInput("");
-      await loadChat();
+      void loadChat();
     } catch (error) {
+      setChatMessages((prev) => prev.filter((msg) => msg.id !== optimisticId));
       setMessage(error instanceof Error ? error.message : "Failed to send chat");
     } finally {
       setSendingChat(false);
@@ -1431,7 +1470,7 @@ export function MatchClient({ matchId }: Props) {
           <button
             type="button"
             onClick={() => void sendChat()}
-            disabled={sendingChat || chatInput.trim().length === 0}
+            disabled={chatInput.trim().length === 0}
             className="rounded-lg bg-[#386641] px-3 py-2 text-sm text-white disabled:cursor-not-allowed disabled:bg-slate-400"
           >
             ➤
