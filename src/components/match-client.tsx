@@ -294,6 +294,8 @@ export function MatchClient({ matchId }: Props) {
     turn: number,
   ) => {
     const steps = Math.max(p1Path.length, p2Path.length);
+    const immediateCollision =
+      !!meta.collision && meta.hitSlot !== null && meta.collisionStep === null;
     setResolvedOverlay({ start, p1: p1Path, p2: p2Path });
     setDisplayBoard(start);
     setFrozenTimerMs(Math.max(0, latestMillisLeftRef.current));
@@ -303,6 +305,27 @@ export function MatchClient({ matchId }: Props) {
 
     let p1 = start.p1;
     let p2 = start.p2;
+    if (immediateCollision) {
+      didTriggerHit = true;
+      triggerImpactFx(meta);
+      if (meta.hitSlot === 1) {
+        setDisplayHp((hp) => {
+          const next = Math.max(hp.p1 - 1, 0);
+          setShakingHeart({ slot: 1, index: next, nonce: Date.now() });
+          if (next === 0) setExplodedSlot(1);
+          return { ...hp, p1: next };
+        });
+      } else if (meta.hitSlot === 2) {
+        setDisplayHp((hp) => {
+          const next = Math.max(hp.p2 - 1, 0);
+          setShakingHeart({ slot: 2, index: next, nonce: Date.now() });
+          if (next === 0) setExplodedSlot(2);
+          return { ...hp, p2: next };
+        });
+      }
+      await sleep(220);
+    }
+
     if (steps <= 0) {
       await sleep(200);
       setDisplayBoard({ p1, p2 });
