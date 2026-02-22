@@ -36,13 +36,11 @@ const BLUE_PATH_STROKE = 5;
 const SUBMIT_BUFFER_MS = 3000;
 const PLANNING_TOTAL_MS = 10000;
 const PLANNING_UI_MS = PLANNING_TOTAL_MS - SUBMIT_BUFFER_MS;
-const CELL_SIZE = 86;
+const MAX_CELL_SIZE = 86;
+const MIN_CELL_SIZE = 48;
 const CELL_GAP = 8;
-const BOARD_PX = BOARD_SIZE * CELL_SIZE + (BOARD_SIZE - 1) * CELL_GAP;
 const DEFAULT_BOARD: DisplayBoard = { p1: [0, 2], p2: [4, 2] };
-const SIDE_PANEL_WIDTH = 260;
 const BOARD_CLUSTER_GAP = 32;
-const BOARD_CLUSTER_BASE_WIDTH = BOARD_PX + BOARD_CLUSTER_GAP + SIDE_PANEL_WIDTH;
 const CHAT_MATCH_WINDOW_MS = 15000;
 const CHAT_KEEP_MISSING_REALTIME_MS = 5000;
 
@@ -54,9 +52,9 @@ const waitForPaint = () =>
   new Promise<void>((resolve) => {
     requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
   });
-const coordToPx = ([row, col]: Coord) => ({
-  left: col * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2,
-  top: row * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2,
+const coordToPx = ([row, col]: Coord, cellSize: number, gap: number) => ({
+  left: col * (cellSize + gap) + cellSize / 2,
+  top: row * (cellSize + gap) + cellSize / 2,
 });
 const heartsForHp = (hp: number) => [0, 1, 2].map((i) => i < hp);
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
@@ -228,7 +226,7 @@ export function MatchClient({ matchId }: Props) {
   const chatInputRef = useRef<HTMLInputElement | null>(null);
   const matchRef = useRef<MatchResponse | null>(null);
   const boardClusterHostRef = useRef<HTMLDivElement | null>(null);
-  const [boardClusterScale, setBoardClusterScale] = useState(1);
+  const [boardHostWidth, setBoardHostWidth] = useState(0);
 
   const mySlot = useMemo(() => {
     if (!match || !me) return null;
@@ -734,8 +732,7 @@ export function MatchClient({ matchId }: Props) {
     const resize = () => {
       const hostWidth = host.clientWidth;
       if (!hostWidth) return;
-      const nextScale = Math.min(1, hostWidth / BOARD_CLUSTER_BASE_WIDTH);
-      setBoardClusterScale(nextScale);
+      setBoardHostWidth(hostWidth);
     };
 
     resize();
@@ -1139,10 +1136,33 @@ export function MatchClient({ matchId }: Props) {
     });
   };
 
+  const layoutHostWidth = boardHostWidth > 0 ? boardHostWidth : 860;
+  const preferredSidePanelWidth = Math.max(
+    200,
+    Math.min(300, Math.floor(layoutHostWidth * 0.32)),
+  );
+  const inlineAvailable = layoutHostWidth - preferredSidePanelWidth - BOARD_CLUSTER_GAP;
+  const inlineCell =
+    (inlineAvailable - (BOARD_SIZE - 1) * CELL_GAP) / BOARD_SIZE;
+  const forceStack = inlineCell < MIN_CELL_SIZE || layoutHostWidth < 760;
+  const sidePanelWidth = forceStack ? layoutHostWidth : preferredSidePanelWidth;
+  const boardAvailable = forceStack
+    ? layoutHostWidth
+    : layoutHostWidth - sidePanelWidth - BOARD_CLUSTER_GAP;
+  const boardCellSize = Math.max(
+    MIN_CELL_SIZE,
+    Math.min(
+      MAX_CELL_SIZE,
+      Math.floor((boardAvailable - (BOARD_SIZE - 1) * CELL_GAP) / BOARD_SIZE),
+    ),
+  );
+  const boardPx =
+    BOARD_SIZE * boardCellSize + (BOARD_SIZE - 1) * CELL_GAP;
+
   const pathToLine = (points: Coord[]) =>
     points
       .map((coord) => {
-        const p = coordToPx(coord);
+        const p = coordToPx(coord, boardCellSize, CELL_GAP);
         return `${p.left},${p.top}`;
       })
       .join(" ");
@@ -1157,9 +1177,11 @@ export function MatchClient({ matchId }: Props) {
   const showResolvedPaths =
     !!resolvedOverlay && (match.phase === "resolving" || animating);
 
-  const p1Px = coordToPx(displayBoard.p1);
-  const p2Px = coordToPx(displayBoard.p2);
-  const impactPx = impactCoord ? coordToPx(impactCoord) : null;
+  const p1Px = coordToPx(displayBoard.p1, boardCellSize, CELL_GAP);
+  const p2Px = coordToPx(displayBoard.p2, boardCellSize, CELL_GAP);
+  const impactPx = impactCoord
+    ? coordToPx(impactCoord, boardCellSize, CELL_GAP)
+    : null;
   const p1Player = match.players.find((p) => p.slot === 1);
   const p2Player = match.players.find((p) => p.slot === 2);
   const p1UserId = p1Player?.user_id ?? "-";
@@ -1381,24 +1403,18 @@ export function MatchClient({ matchId }: Props) {
           </div>
         </div>
         <div ref={boardClusterHostRef} className="mt-5 w-full">
-          <div style={{ height: BOARD_PX * boardClusterScale }}>
             <div
-              className="flex items-start gap-8"
-              style={{
-                width: BOARD_CLUSTER_BASE_WIDTH,
-                transform: `scale(${boardClusterScale})`,
-                transformOrigin: "top left",
-              }}
+              className={`grid items-start gap-4 ${forceStack ? "grid-cols-1" : "grid-cols-[minmax(0,1fr)_auto]"}`}
             >
           <div
             className="relative"
-            style={{ width: BOARD_PX, height: BOARD_PX }}
+            style={{ width: boardPx, height: boardPx }}
           >
             <div
               className="grid"
               style={{
-                width: BOARD_PX,
-                height: BOARD_PX,
+                width: boardPx,
+                height: boardPx,
                 gridTemplateColumns: `repeat(${BOARD_SIZE}, minmax(0, 1fr))`,
                 gap: `${CELL_GAP}px`,
               }}
@@ -1419,7 +1435,7 @@ export function MatchClient({ matchId }: Props) {
                             ? "cursor-not-allowed border-slate-700 bg-slate-800 text-slate-300"
                             : `border-slate-200 bg-slate-50 text-slate-500 ${canPlan ? "hover:bg-slate-100" : "cursor-default"}`
                         }`}
-                        style={{ width: CELL_SIZE, height: CELL_SIZE }}
+                        style={{ width: boardCellSize, height: boardCellSize }}
                       >
                         ({row},{col})
                       </button>
@@ -1431,9 +1447,9 @@ export function MatchClient({ matchId }: Props) {
 
             <svg
               className="pointer-events-none absolute inset-0"
-              width={BOARD_PX}
-              height={BOARD_PX}
-              viewBox={`0 0 ${BOARD_PX} ${BOARD_PX}`}
+              width={boardPx}
+              height={boardPx}
+              viewBox={`0 0 ${boardPx} ${boardPx}`}
             >
               {match.phase === "planning" &&
                 planningLine.split(" ").length >= 2 && (
@@ -1534,7 +1550,10 @@ export function MatchClient({ matchId }: Props) {
           </div>
           <div
             className="space-y-4"
-            style={{ width: SIDE_PANEL_WIDTH, minWidth: SIDE_PANEL_WIDTH }}
+            style={{
+              width: forceStack ? "100%" : sidePanelWidth,
+              minWidth: forceStack ? 0 : sidePanelWidth,
+            }}
           >
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-center text-slate-700">
               <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
@@ -1571,7 +1590,6 @@ export function MatchClient({ matchId }: Props) {
             </div>
           </div>
             </div>
-          </div>
         </div>
       </section>
 
