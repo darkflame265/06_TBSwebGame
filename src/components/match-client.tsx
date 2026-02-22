@@ -730,16 +730,26 @@ export function MatchClient({ matchId }: Props) {
     if (!host) return;
 
     const resize = () => {
-      const hostWidth = host.clientWidth;
-      if (!hostWidth) return;
-      setBoardHostWidth(hostWidth);
+      const hostRect = host.getBoundingClientRect().width;
+      const parentRect = host.parentElement?.getBoundingClientRect().width ?? 0;
+      const viewportFallback =
+        typeof window !== "undefined" ? window.innerWidth - 80 : 0;
+      const measured = Math.max(0, hostRect || parentRect || viewportFallback);
+      if (measured > 0) setBoardHostWidth(measured);
     };
 
     resize();
+    requestAnimationFrame(resize);
+    const t1 = setTimeout(resize, 0);
+    const t2 = setTimeout(resize, 120);
+
     const observer = new ResizeObserver(() => resize());
     observer.observe(host);
+    if (host.parentElement) observer.observe(host.parentElement);
     window.addEventListener("resize", resize);
     return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
       observer.disconnect();
       window.removeEventListener("resize", resize);
     };
@@ -1144,7 +1154,8 @@ export function MatchClient({ matchId }: Props) {
   const inlineAvailable = layoutHostWidth - preferredSidePanelWidth - BOARD_CLUSTER_GAP;
   const inlineCell =
     (inlineAvailable - (BOARD_SIZE - 1) * CELL_GAP) / BOARD_SIZE;
-  const forceStack = inlineCell < MIN_CELL_SIZE || layoutHostWidth < 760;
+  const forceStack =
+    inlineCell < MIN_CELL_SIZE || layoutHostWidth < 840;
   const sidePanelWidth = forceStack ? layoutHostWidth : preferredSidePanelWidth;
   const boardAvailable = forceStack
     ? layoutHostWidth
