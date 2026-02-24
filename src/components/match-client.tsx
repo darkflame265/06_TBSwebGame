@@ -1141,6 +1141,28 @@ export function MatchClient({ matchId }: Props) {
     setDraggingPath(true);
   };
 
+  const tapPathStep = (row: number, col: number) => {
+    if (!canPlan || !myPos) return;
+    setPlannedPath((prev) => {
+      const end = prev.length > 0 ? prev[prev.length - 1] : myPos;
+      const target: Coord = [row, col];
+      const targetKey = `${row},${col}`;
+      if (sameCoord(end, target)) return prev;
+
+      const back =
+        prev.length > 0
+          ? prev.length > 1
+            ? prev[prev.length - 2]
+            : myPos
+          : null;
+      if (back && sameCoord(back, target)) return prev.slice(0, -1);
+      if (!isOrthogonalStep(end, target)) return prev;
+      if (obstacleKeys.has(targetKey)) return prev;
+      if (prev.length >= maxPoints) return prev;
+      return [...prev, target];
+    });
+  };
+
   const extendOrRewindPath = (row: number, col: number) => {
     if (!draggingPath || !canPlan || !myPos) return;
     setPlannedPath((prev) => {
@@ -1184,8 +1206,6 @@ export function MatchClient({ matchId }: Props) {
     120,
     effectiveHostWidth - sidePanelWidth - clusterGap - 8,
   );
-  const inlineCell =
-    (boardAvailable - (BOARD_SIZE - 1) * CELL_GAP) / BOARD_SIZE;
   const boardCellSize = Math.max(
     MIN_CELL_SIZE,
     Math.min(
@@ -1365,16 +1385,7 @@ export function MatchClient({ matchId }: Props) {
       <main className="mx-auto mt-4 grid max-w-7xl grid-cols-1 gap-8 px-6 pb-10 lg:grid-cols-12">
         <section className="rounded-2xl border border-slate-200/60 bg-white p-6 shadow-sm lg:col-span-8">
           <div className="mb-8 flex items-center justify-between">
-            <div>
-              <h2 className="text-xl font-bold">Board 5x5</h2>
-              <p className="mt-1 text-[11px] text-slate-500">
-                debug: host={Math.round(layoutHostWidth)} | eff=
-                {Math.round(effectiveHostWidth)} | cell={boardCellSize}
-                {" "} | inlineCell={Math.round(inlineCell)} | side=
-                {sidePanelWidth} | gap={clusterGap} | below=
-                {isChatBelow ? "true" : "false"} | vw={viewportWidth}
-              </p>
-            </div>
+            <h2 className="text-xl font-bold">Board 5x5</h2>
             <div className="flex items-center gap-6">
               <div className="flex items-center gap-3">
                 <div className="text-right">
@@ -1474,7 +1485,7 @@ export function MatchClient({ matchId }: Props) {
             >
           <div
             className="relative flex-none"
-            style={{ width: boardPx, height: boardPx }}
+            style={{ width: boardPx, height: boardPx, touchAction: "none" }}
           >
                 <div
                   className="grid"
@@ -1493,9 +1504,13 @@ export function MatchClient({ matchId }: Props) {
                           <button
                             key={`${row}-${col}`}
                             type="button"
-                            onPointerDown={() => beginPathDrag(row, col)}
+                            onPointerDown={(e) => {
+                              e.preventDefault();
+                              beginPathDrag(row, col);
+                            }}
                             onPointerEnter={() => extendOrRewindPath(row, col)}
                             onPointerUp={() => setDraggingPath(false)}
+                            onClick={() => tapPathStep(row, col)}
                             className={`relative rounded-lg border text-[10px] ${
                               isObstacle
                                 ? "cursor-not-allowed border-slate-700 bg-slate-800 text-slate-300"
@@ -1504,6 +1519,8 @@ export function MatchClient({ matchId }: Props) {
                             style={{
                               width: boardCellSize,
                               height: boardCellSize,
+                              touchAction: "none",
+                              userSelect: "none",
                             }}
                           >
                             ({row},{col})
