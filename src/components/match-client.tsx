@@ -37,7 +37,9 @@ const SUBMIT_BUFFER_MS = 3000;
 const PLANNING_TOTAL_MS = 10000;
 const PLANNING_UI_MS = PLANNING_TOTAL_MS - SUBMIT_BUFFER_MS;
 const MAX_CELL_SIZE = 86;
-const MIN_CELL_SIZE = 48;
+const MIN_CELL_SIZE = 24;
+const MAX_CELL_SIZE_BELOW = 72;
+const MAX_CELL_SIZE_NARROW = 68;
 const CELL_GAP = 8;
 const DEFAULT_BOARD: DisplayBoard = { p1: [0, 2], p2: [4, 2] };
 const BOARD_CLUSTER_GAP = 32;
@@ -95,7 +97,7 @@ const isTypingTarget = (target: EventTarget | null) => {
 };
 
 const SwordIcon = () => (
-  <svg viewBox="0 0 64 64" className="h-16 w-16" aria-hidden>
+  <svg viewBox="0 0 64 64" className="h-full w-full" aria-hidden>
     <g
       fill="none"
       stroke="currentColor"
@@ -112,7 +114,7 @@ const SwordIcon = () => (
 );
 
 const RunIcon = () => (
-  <svg viewBox="0 0 64 64" className="h-16 w-16" aria-hidden>
+  <svg viewBox="0 0 64 64" className="h-full w-full" aria-hidden>
     <g
       fill="none"
       stroke="currentColor"
@@ -249,7 +251,7 @@ export function MatchClient({ matchId }: Props) {
     !planningLocked;
   const obstacleKeys = useMemo(
     () => new Set((match?.obstacles ?? []).map(([x, y]) => `${x},${y}`)),
-    [match?.obstacles]
+    [match?.obstacles],
   );
   const attackerSlot = match?.attacker_slot ?? 1;
   const myRole = mySlot ? (attackerSlot === mySlot ? "ATTACK" : "EVADE") : "-";
@@ -532,8 +534,8 @@ export function MatchClient({ matchId }: Props) {
 
   const pushIncomingChat = (row: ChatRealtimeRow) => {
     const nickname =
-      matchRef.current?.players.find((p) => p.user_id === row.user_id)?.nickname ??
-      null;
+      matchRef.current?.players.find((p) => p.user_id === row.user_id)
+        ?.nickname ?? null;
     const message: LocalChatMessage = {
       ...row,
       nickname,
@@ -562,14 +564,18 @@ export function MatchClient({ matchId }: Props) {
 
   const loadChat = async () => {
     try {
-      const data = await apiGet<MatchChatMessage[]>(`/api/matches/${matchId}/chat`);
+      const data = await apiGet<MatchChatMessage[]>(
+        `/api/matches/${matchId}/chat`,
+      );
       setChatMessages((prev) => {
         const now = Date.now();
         const merged: LocalChatMessage[] = [...data];
 
         for (const pending of prev) {
           if (!pending.optimistic) continue;
-          const hasRealMatch = data.some((real) => isLikelySameChat(real, pending));
+          const hasRealMatch = data.some((real) =>
+            isLikelySameChat(real, pending),
+          );
           if (hasRealMatch) continue;
           if (now - toMs(pending.created_at) <= CHAT_MATCH_WINDOW_MS) {
             merged.push(pending);
@@ -731,10 +737,19 @@ export function MatchClient({ matchId }: Props) {
 
     const resize = () => {
       const hostRect = host.getBoundingClientRect().width;
+      const parentClient = host.parentElement?.clientWidth ?? 0;
       const parentRect = host.parentElement?.getBoundingClientRect().width ?? 0;
       const viewportFallback =
         typeof window !== "undefined" ? window.innerWidth - 80 : 0;
-      const measured = Math.max(0, hostRect || parentRect || viewportFallback);
+      // Use the actual container width first. hostRect can be inflated by overflowed children.
+      const measured =
+        parentClient > 0
+          ? parentClient
+          : parentRect > 0
+            ? parentRect
+            : hostRect > 0
+              ? hostRect
+              : viewportFallback;
       if (measured > 0) setBoardHostWidth(measured);
     };
 
@@ -1052,7 +1067,7 @@ export function MatchClient({ matchId }: Props) {
     const nowIso = new Date().toISOString();
     const myNickname =
       me && match
-        ? match.players.find((p) => p.user_id === me)?.nickname ?? null
+        ? (match.players.find((p) => p.user_id === me)?.nickname ?? null)
         : null;
     const optimisticId = -Date.now() - Math.floor(Math.random() * 1000);
     const optimisticMessage: LocalChatMessage = {
@@ -1078,7 +1093,9 @@ export function MatchClient({ matchId }: Props) {
       void loadChat();
     } catch (error) {
       setChatMessages((prev) => prev.filter((msg) => msg.id !== optimisticId));
-      setMessage(error instanceof Error ? error.message : "Failed to send chat");
+      setMessage(
+        error instanceof Error ? error.message : "Failed to send chat",
+      );
     } finally {
       setSendingChat(false);
     }
@@ -1147,28 +1164,56 @@ export function MatchClient({ matchId }: Props) {
   };
 
   const layoutHostWidth = boardHostWidth > 0 ? boardHostWidth : 860;
-  const preferredSidePanelWidth = Math.max(
-    200,
-    Math.min(300, Math.floor(layoutHostWidth * 0.32)),
+  const viewportWidth = typeof window !== "undefined" ? window.innerWidth : 0;
+  const isChatBelow = viewportWidth < 1024;
+  const clusterGap = isChatBelow ? 16 : BOARD_CLUSTER_GAP;
+  const viewportBudget =
+    viewportWidth >= 1280
+      ? viewportWidth - 430
+      : viewportWidth >= 1024
+        ? viewportWidth - 430
+        : viewportWidth - 80;
+  const effectiveHostWidth = Math.max(
+    320,
+    Math.min(layoutHostWidth, viewportBudget > 0 ? viewportBudget : layoutHostWidth),
   );
-  const inlineAvailable = layoutHostWidth - preferredSidePanelWidth - BOARD_CLUSTER_GAP;
+  const sidePanelWidth = isChatBelow
+    ? Math.max(96, Math.min(170, Math.floor(effectiveHostWidth * 0.2)))
+    : Math.max(100, Math.min(190, Math.floor(effectiveHostWidth * 0.24)));
+  const boardAvailable = Math.max(
+    120,
+    effectiveHostWidth - sidePanelWidth - clusterGap - 8,
+  );
   const inlineCell =
-    (inlineAvailable - (BOARD_SIZE - 1) * CELL_GAP) / BOARD_SIZE;
-  const forceStack =
-    inlineCell < MIN_CELL_SIZE || layoutHostWidth < 840;
-  const sidePanelWidth = forceStack ? layoutHostWidth : preferredSidePanelWidth;
-  const boardAvailable = forceStack
-    ? layoutHostWidth
-    : layoutHostWidth - sidePanelWidth - BOARD_CLUSTER_GAP;
+    (boardAvailable - (BOARD_SIZE - 1) * CELL_GAP) / BOARD_SIZE;
   const boardCellSize = Math.max(
     MIN_CELL_SIZE,
     Math.min(
-      MAX_CELL_SIZE,
+      viewportWidth <= 650
+        ? MAX_CELL_SIZE_NARROW
+        : isChatBelow
+          ? MAX_CELL_SIZE_BELOW
+          : MAX_CELL_SIZE,
       Math.floor((boardAvailable - (BOARD_SIZE - 1) * CELL_GAP) / BOARD_SIZE),
     ),
   );
-  const boardPx =
-    BOARD_SIZE * boardCellSize + (BOARD_SIZE - 1) * CELL_GAP;
+  const boardPx = BOARD_SIZE * boardCellSize + (BOARD_SIZE - 1) * CELL_GAP;
+  const roleIconSize = Math.max(
+    44,
+    Math.min(80, Math.round((boardCellSize / MAX_CELL_SIZE) * 80)),
+  );
+  const roleOuterSize = Math.max(
+    64,
+    Math.min(96, Math.round((boardCellSize / MAX_CELL_SIZE) * 96)),
+  );
+  const roleTitleFontSize = Math.max(
+    10,
+    Math.min(12, Math.round((boardCellSize / MAX_CELL_SIZE) * 12)),
+  );
+  const roleLabelFontSize = Math.max(
+    14,
+    Math.min(24, Math.round((boardCellSize / MAX_CELL_SIZE) * 24)),
+  );
 
   const pathToLine = (points: Coord[]) =>
     points
@@ -1222,25 +1267,25 @@ export function MatchClient({ matchId }: Props) {
             </p>
           </div>
           <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setMuted((v) => !v)}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm"
-          >
-            {muted ? "SFX Off" : "SFX On"}
-          </button>
-          <button
-            onClick={leaveMatch}
-            disabled={leaving}
-            className="rounded-lg bg-[#bc4749] px-4 py-2 text-white shadow-sm disabled:cursor-not-allowed disabled:bg-slate-400"
-          >
-            {leaving
-              ? "Leaving..."
-              : match.status === "finished"
-                ? "Back to lobby"
-                : "Leave match"}
-          </button>
-        </div>
+            <button
+              type="button"
+              onClick={() => setMuted((v) => !v)}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm"
+            >
+              {muted ? "SFX Off" : "SFX On"}
+            </button>
+            <button
+              onClick={leaveMatch}
+              disabled={leaving}
+              className="rounded-lg bg-[#bc4749] px-4 py-2 text-white shadow-sm disabled:cursor-not-allowed disabled:bg-slate-400"
+            >
+              {leaving
+                ? "Leaving..."
+                : match.status === "finished"
+                  ? "Back to lobby"
+                  : "Leave match"}
+            </button>
+          </div>
         </div>
         <div className="rounded-xl border border-slate-200/70 bg-white p-4 shadow-sm">
           <div className="mb-2 flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-500">
@@ -1250,12 +1295,12 @@ export function MatchClient({ matchId }: Props) {
             </span>
           </div>
           <div className="h-1.5 w-full overflow-hidden rounded bg-slate-200">
-          <div
-            className="h-full bg-[#386641]"
-            style={{
-              width: `${Math.max(0, Math.min(100, ((isMovingUi ? 0 : shownMillisLeft) / timerBarBase) * 100))}%`,
-            }}
-          />
+            <div
+              className="h-full bg-[#386641]"
+              style={{
+                width: `${Math.max(0, Math.min(100, ((isMovingUi ? 0 : shownMillisLeft) / timerBarBase) * 100))}%`,
+              }}
+            />
           </div>
         </div>
       </header>
@@ -1318,352 +1363,381 @@ export function MatchClient({ matchId }: Props) {
       )}
 
       <main className="mx-auto mt-4 grid max-w-7xl grid-cols-1 gap-8 px-6 pb-10 lg:grid-cols-12">
-      <section className="rounded-2xl border border-slate-200/60 bg-white p-6 shadow-sm lg:col-span-8">
-        <div className="mb-8 flex items-center justify-between">
-          <h2 className="text-xl font-bold">Board 5x5</h2>
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-3">
-              <div className="text-right">
-                <p
-                  className="max-w-[140px] truncate text-[10px] font-bold uppercase text-red-600"
-                  title={p1Name}
-                >
-                  {p1Name}
-                </p>
-                <div className="mt-0.5 flex justify-end gap-0.5">
-                  {heartsForHp(displayHp.p1).map((filled, idx) => (
-                    <span
-                      key={`p1-heart-header-${idx}-${shakingHeart?.nonce ?? 0}`}
-                      className={`text-lg text-rose-500 ${filled ? "opacity-100" : "opacity-25"} ${
-                        shakingHeart?.slot === 1 && shakingHeart.index === idx
-                          ? "heart-shake"
-                          : ""
-                      }`}
-                    >
-                      {"\u2665"}
-                    </span>
-                  ))}
+        <section className="rounded-2xl border border-slate-200/60 bg-white p-6 shadow-sm lg:col-span-8">
+          <div className="mb-8 flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-bold">Board 5x5</h2>
+              <p className="mt-1 text-[11px] text-slate-500">
+                debug: host={Math.round(layoutHostWidth)} | eff=
+                {Math.round(effectiveHostWidth)} | cell={boardCellSize}
+                {" "} | inlineCell={Math.round(inlineCell)} | side=
+                {sidePanelWidth} | gap={clusterGap} | below=
+                {isChatBelow ? "true" : "false"} | vw={viewportWidth}
+              </p>
+            </div>
+            <div className="flex items-center gap-6">
+              <div className="flex items-center gap-3">
+                <div className="text-right">
+                  <p
+                    className="max-w-[140px] truncate text-[10px] font-bold uppercase text-red-600"
+                    title={p1Name}
+                  >
+                    {p1Name}
+                  </p>
+                  <div className="mt-0.5 flex justify-end gap-0.5">
+                    {heartsForHp(displayHp.p1).map((filled, idx) => (
+                      <span
+                        key={`p1-heart-header-${idx}-${shakingHeart?.nonce ?? 0}`}
+                        className={`text-lg text-rose-500 ${filled ? "opacity-100" : "opacity-25"} ${
+                          shakingHeart?.slot === 1 && shakingHeart.index === idx
+                            ? "heart-shake"
+                            : ""
+                        }`}
+                      >
+                        {"\u2665"}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setOpenProfileSlot((prev) => (prev === 1 ? null : 1))
+                    }
+                    className="relative flex h-10 w-10 items-center justify-center rounded-full border-2 border-red-500 bg-red-50 text-red-500"
+                    title={p1Name}
+                  >
+                    <span>◎</span>
+                  </button>
+                  {openProfileSlot === 1 && (
+                    <div className="absolute -bottom-[90px] left-1/2 z-20 w-[320px] -translate-x-1/2 rounded border border-slate-200 bg-white p-3 text-xs text-slate-700 shadow">
+                      <p className="select-text font-semibold">{p1Name}</p>
+                      <p className="mt-1 select-text break-all font-mono text-[11px]">
+                        Guest: {p1UserId}
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setOpenProfileSlot((prev) => (prev === 1 ? null : 1))
-                  }
-                  className="relative flex h-10 w-10 items-center justify-center rounded-full border-2 border-red-500 bg-red-50 text-red-500"
-                  title={p1Name}
-                >
-                  <span>◎</span>
-                </button>
-                {openProfileSlot === 1 && (
-                  <div className="absolute -bottom-[90px] left-1/2 z-20 w-[320px] -translate-x-1/2 rounded border border-slate-200 bg-white p-3 text-xs text-slate-700 shadow">
-                    <p className="select-text font-semibold">{p1Name}</p>
-                    <p className="mt-1 select-text break-all font-mono text-[11px]">
-                      Guest: {p1UserId}
-                    </p>
+              <div className="h-8 w-px bg-slate-200" />
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setOpenProfileSlot((prev) => (prev === 2 ? null : 2))
+                    }
+                    className="relative flex h-10 w-10 items-center justify-center rounded-full border-2 border-blue-500 bg-blue-50 text-blue-500"
+                    title={p2Name}
+                  >
+                    <span>◎</span>
+                  </button>
+                  {openProfileSlot === 2 && (
+                    <div className="absolute -bottom-[90px] left-1/2 z-20 w-[320px] -translate-x-1/2 rounded border border-slate-200 bg-white p-3 text-xs text-slate-700 shadow">
+                      <p className="select-text font-semibold">{p2Name}</p>
+                      <p className="mt-1 select-text break-all font-mono text-[11px]">
+                        Guest: {p2UserId}
+                      </p>
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <p
+                    className="max-w-[140px] truncate text-[10px] font-bold uppercase text-blue-500"
+                    title={p2Name}
+                  >
+                    {p2Name}
+                  </p>
+                  <div className="mt-0.5 flex gap-0.5">
+                    {heartsForHp(displayHp.p2).map((filled, idx) => (
+                      <span
+                        key={`p2-heart-header-${idx}-${shakingHeart?.nonce ?? 0}`}
+                        className={`text-lg text-rose-500 ${filled ? "opacity-100" : "opacity-25"} ${
+                          shakingHeart?.slot === 2 && shakingHeart.index === idx
+                            ? "heart-shake"
+                            : ""
+                        }`}
+                      >
+                        {"\u2665"}
+                      </span>
+                    ))}
                   </div>
-                )}
-              </div>
-            </div>
-            <div className="h-8 w-px bg-slate-200" />
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setOpenProfileSlot((prev) => (prev === 2 ? null : 2))
-                  }
-                  className="relative flex h-10 w-10 items-center justify-center rounded-full border-2 border-blue-500 bg-blue-50 text-blue-500"
-                  title={p2Name}
-                >
-                  <span>◎</span>
-                </button>
-                {openProfileSlot === 2 && (
-                  <div className="absolute -bottom-[90px] left-1/2 z-20 w-[320px] -translate-x-1/2 rounded border border-slate-200 bg-white p-3 text-xs text-slate-700 shadow">
-                    <p className="select-text font-semibold">{p2Name}</p>
-                    <p className="mt-1 select-text break-all font-mono text-[11px]">
-                      Guest: {p2UserId}
-                    </p>
-                  </div>
-                )}
-              </div>
-              <div>
-                <p
-                  className="max-w-[140px] truncate text-[10px] font-bold uppercase text-blue-500"
-                  title={p2Name}
-                >
-                  {p2Name}
-                </p>
-                <div className="mt-0.5 flex gap-0.5">
-                  {heartsForHp(displayHp.p2).map((filled, idx) => (
-                    <span
-                      key={`p2-heart-header-${idx}-${shakingHeart?.nonce ?? 0}`}
-                      className={`text-lg text-rose-500 ${filled ? "opacity-100" : "opacity-25"} ${
-                        shakingHeart?.slot === 2 && shakingHeart.index === idx
-                          ? "heart-shake"
-                          : ""
-                      }`}
-                    >
-                      {"\u2665"}
-                    </span>
-                  ))}
                 </div>
               </div>
             </div>
           </div>
-        </div>
-        <div ref={boardClusterHostRef} className="mt-5 w-full">
+          <div ref={boardClusterHostRef} className="mt-5 w-full">
             <div
-              className={`grid items-start gap-4 ${forceStack ? "grid-cols-1" : "grid-cols-[minmax(0,1fr)_auto]"}`}
+              className="flex items-start gap-4"
+              style={{ gap: clusterGap }}
             >
           <div
-            className="relative"
+            className="relative flex-none"
             style={{ width: boardPx, height: boardPx }}
           >
-            <div
-              className="grid"
-              style={{
-                width: boardPx,
-                height: boardPx,
-                gridTemplateColumns: `repeat(${BOARD_SIZE}, minmax(0, 1fr))`,
-                gap: `${CELL_GAP}px`,
-              }}
-            >
-              {Array.from({ length: BOARD_SIZE }).map((_, row) =>
-                Array.from({ length: BOARD_SIZE }).map((__, col) => (
-                  (() => {
-                    const isObstacle = obstacleKeys.has(`${row},${col}`);
-                    return (
-                      <button
-                        key={`${row}-${col}`}
-                        type="button"
-                        onPointerDown={() => beginPathDrag(row, col)}
-                        onPointerEnter={() => extendOrRewindPath(row, col)}
-                        onPointerUp={() => setDraggingPath(false)}
-                        className={`relative rounded-lg border text-[10px] ${
-                          isObstacle
-                            ? "cursor-not-allowed border-slate-700 bg-slate-800 text-slate-300"
-                            : `border-slate-200 bg-slate-50 text-slate-500 ${canPlan ? "hover:bg-slate-100" : "cursor-default"}`
-                        }`}
-                        style={{ width: boardCellSize, height: boardCellSize }}
-                      >
-                        ({row},{col})
-                      </button>
-                    );
-                  })()
-                )),
-              )}
-            </div>
+                <div
+                  className="grid"
+                  style={{
+                    width: boardPx,
+                    height: boardPx,
+                    gridTemplateColumns: `repeat(${BOARD_SIZE}, minmax(0, 1fr))`,
+                    gap: `${CELL_GAP}px`,
+                  }}
+                >
+                  {Array.from({ length: BOARD_SIZE }).map((_, row) =>
+                    Array.from({ length: BOARD_SIZE }).map((__, col) =>
+                      (() => {
+                        const isObstacle = obstacleKeys.has(`${row},${col}`);
+                        return (
+                          <button
+                            key={`${row}-${col}`}
+                            type="button"
+                            onPointerDown={() => beginPathDrag(row, col)}
+                            onPointerEnter={() => extendOrRewindPath(row, col)}
+                            onPointerUp={() => setDraggingPath(false)}
+                            className={`relative rounded-lg border text-[10px] ${
+                              isObstacle
+                                ? "cursor-not-allowed border-slate-700 bg-slate-800 text-slate-300"
+                                : `border-slate-200 bg-slate-50 text-slate-500 ${canPlan ? "hover:bg-slate-100" : "cursor-default"}`
+                            }`}
+                            style={{
+                              width: boardCellSize,
+                              height: boardCellSize,
+                            }}
+                          >
+                            ({row},{col})
+                          </button>
+                        );
+                      })(),
+                    ),
+                  )}
+                </div>
 
-            <svg
-              className="pointer-events-none absolute inset-0"
-              width={boardPx}
-              height={boardPx}
-              viewBox={`0 0 ${boardPx} ${boardPx}`}
-            >
-              {match.phase === "planning" &&
-                planningLine.split(" ").length >= 2 && (
-                  <polyline
-                    points={planningLine}
-                    fill="none"
-                    stroke={mySlot === 1 ? "#dc2626" : "#2563eb"}
-                    strokeWidth={
-                      mySlot === 1 ? RED_PATH_STROKE : BLUE_PATH_STROKE
-                    }
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    opacity="0.75"
+                <svg
+                  className="pointer-events-none absolute inset-0"
+                  width={boardPx}
+                  height={boardPx}
+                  viewBox={`0 0 ${boardPx} ${boardPx}`}
+                >
+                  {match.phase === "planning" &&
+                    planningLine.split(" ").length >= 2 && (
+                      <polyline
+                        points={planningLine}
+                        fill="none"
+                        stroke={mySlot === 1 ? "#dc2626" : "#2563eb"}
+                        strokeWidth={
+                          mySlot === 1 ? RED_PATH_STROKE : BLUE_PATH_STROKE
+                        }
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        opacity="0.75"
+                      />
+                    )}
+                  {showResolvedPaths &&
+                    resolvingP1Line.split(" ").length >= 2 && (
+                      <polyline
+                        points={resolvingP1Line}
+                        fill="none"
+                        stroke="#dc2626"
+                        strokeWidth={RED_PATH_STROKE}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        opacity="0.75"
+                      />
+                    )}
+                  {showResolvedPaths &&
+                    resolvingP2Line.split(" ").length >= 2 && (
+                      <polyline
+                        points={resolvingP2Line}
+                        fill="none"
+                        stroke="#2563eb"
+                        strokeWidth={BLUE_PATH_STROKE}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        opacity="0.85"
+                      />
+                    )}
+                </svg>
+
+                {impactPx && (
+                  <div
+                    className="pointer-events-none absolute impact-burst -translate-x-1/2 -translate-y-1/2"
+                    style={{ left: impactPx.left, top: impactPx.top }}
                   />
                 )}
-              {showResolvedPaths && resolvingP1Line.split(" ").length >= 2 && (
-                <polyline
-                  points={resolvingP1Line}
-                  fill="none"
-                  stroke="#dc2626"
-                  strokeWidth={RED_PATH_STROKE}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  opacity="0.75"
+
+                <div
+                  className={`pointer-events-none absolute h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500 ${
+                    hitFlashSlot === 1 ? "hit-blink" : ""
+                  } ${explodedSlot === 1 ? "piece-explode" : ""}`}
+                  style={{
+                    left: p1Px.left,
+                    top: p1Px.top,
+                    transition: `left ${STEP_ANIMATION_MS}ms linear, top ${STEP_ANIMATION_MS}ms linear`,
+                    boxShadow:
+                      (mySlot === 1
+                        ? "0 0 0 3px rgba(34,197,94,0.85), 0 0 12px 3px rgba(34,197,94,0.65)"
+                        : "0 2px 6px rgba(15,23,42,0.25)") +
+                      (p1IsAttacker
+                        ? ", 0 0 14px 5px rgba(249,115,22,0.65)"
+                        : ""),
+                  }}
                 />
-              )}
-              {showResolvedPaths && resolvingP2Line.split(" ").length >= 2 && (
-                <polyline
-                  points={resolvingP2Line}
-                  fill="none"
-                  stroke="#2563eb"
-                  strokeWidth={BLUE_PATH_STROKE}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  opacity="0.85"
+                {p1IsAttacker && (
+                  <div
+                    className="pointer-events-none absolute flame-aura -translate-x-1/2 -translate-y-1/2"
+                    style={{
+                      left: p1Px.left,
+                      top: p1Px.top,
+                      transition: `left ${STEP_ANIMATION_MS}ms linear, top ${STEP_ANIMATION_MS}ms linear`,
+                    }}
+                  />
+                )}
+
+                <div
+                  className={`pointer-events-none absolute h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-500 ${
+                    hitFlashSlot === 2 ? "hit-blink" : ""
+                  } ${explodedSlot === 2 ? "piece-explode" : ""}`}
+                  style={{
+                    left: p2Px.left,
+                    top: p2Px.top,
+                    transition: `left ${STEP_ANIMATION_MS}ms linear, top ${STEP_ANIMATION_MS}ms linear`,
+                    boxShadow:
+                      (mySlot === 2
+                        ? "0 0 0 3px rgba(34,197,94,0.85), 0 0 12px 3px rgba(34,197,94,0.65)"
+                        : "0 2px 6px rgba(15,23,42,0.25)") +
+                      (p2IsAttacker
+                        ? ", 0 0 14px 5px rgba(249,115,22,0.65)"
+                        : ""),
+                  }}
                 />
-              )}
-            </svg>
-
-            {impactPx && (
-              <div
-                className="pointer-events-none absolute impact-burst -translate-x-1/2 -translate-y-1/2"
-                style={{ left: impactPx.left, top: impactPx.top }}
-              />
-            )}
-
-            <div
-              className={`pointer-events-none absolute h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500 ${
-                hitFlashSlot === 1 ? "hit-blink" : ""
-              } ${explodedSlot === 1 ? "piece-explode" : ""}`}
-              style={{
-                left: p1Px.left,
-                top: p1Px.top,
-                transition: `left ${STEP_ANIMATION_MS}ms linear, top ${STEP_ANIMATION_MS}ms linear`,
-                boxShadow:
-                  (mySlot === 1
-                    ? "0 0 0 3px rgba(34,197,94,0.85), 0 0 12px 3px rgba(34,197,94,0.65)"
-                    : "0 2px 6px rgba(15,23,42,0.25)") +
-                  (p1IsAttacker ? ", 0 0 14px 5px rgba(249,115,22,0.65)" : ""),
-              }}
-            />
-            {p1IsAttacker && (
-              <div
-                className="pointer-events-none absolute flame-aura -translate-x-1/2 -translate-y-1/2"
-                style={{
-                  left: p1Px.left,
-                  top: p1Px.top,
-                  transition: `left ${STEP_ANIMATION_MS}ms linear, top ${STEP_ANIMATION_MS}ms linear`,
-                }}
-              />
-            )}
-
-            <div
-              className={`pointer-events-none absolute h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-500 ${
-                hitFlashSlot === 2 ? "hit-blink" : ""
-              } ${explodedSlot === 2 ? "piece-explode" : ""}`}
-              style={{
-                left: p2Px.left,
-                top: p2Px.top,
-                transition: `left ${STEP_ANIMATION_MS}ms linear, top ${STEP_ANIMATION_MS}ms linear`,
-                boxShadow:
-                  (mySlot === 2
-                    ? "0 0 0 3px rgba(34,197,94,0.85), 0 0 12px 3px rgba(34,197,94,0.65)"
-                    : "0 2px 6px rgba(15,23,42,0.25)") +
-                  (p2IsAttacker ? ", 0 0 14px 5px rgba(249,115,22,0.65)" : ""),
-              }}
-            />
-            {p2IsAttacker && (
-              <div
-                className="pointer-events-none absolute flame-aura -translate-x-1/2 -translate-y-1/2"
-                style={{
-                  left: p2Px.left,
-                  top: p2Px.top,
-                  transition: `left ${STEP_ANIMATION_MS}ms linear, top ${STEP_ANIMATION_MS}ms linear`,
-                }}
-              />
-            )}
-          </div>
+                {p2IsAttacker && (
+                  <div
+                    className="pointer-events-none absolute flame-aura -translate-x-1/2 -translate-y-1/2"
+                    style={{
+                      left: p2Px.left,
+                      top: p2Px.top,
+                      transition: `left ${STEP_ANIMATION_MS}ms linear, top ${STEP_ANIMATION_MS}ms linear`,
+                    }}
+                  />
+                )}
+              </div>
           <div
-            className="space-y-4"
+            className="space-y-4 flex-none"
             style={{
-              width: forceStack ? "100%" : sidePanelWidth,
-              minWidth: forceStack ? 0 : sidePanelWidth,
+              width: sidePanelWidth,
+              minWidth: sidePanelWidth,
             }}
           >
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-center text-slate-700">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
+              <p
+                className="font-bold uppercase tracking-widest text-slate-500"
+                style={{ fontSize: roleTitleFontSize }}
+              >
                 YOUR ROLE
               </p>
             <div
-              className={`mx-auto mt-3 flex h-20 w-20 items-center justify-center rounded-full border-4 ${myRole === "ATTACK" ? "border-red-200 bg-red-50 text-red-600" : "border-blue-200 bg-blue-50 text-blue-600"}`}
+              className={`mx-auto mt-3 flex items-center justify-center rounded-full border-4 ${myRole === "ATTACK" ? "border-red-200 bg-red-50 text-red-600" : "border-blue-200 bg-blue-50 text-blue-600"}`}
+              style={{ width: roleOuterSize, height: roleOuterSize }}
             >
-              {myRole === "ATTACK" ? <SwordIcon /> : <RunIcon />}
+              <div style={{ width: roleIconSize, height: roleIconSize }}>
+                {myRole === "ATTACK" ? <SwordIcon /> : <RunIcon />}
+              </div>
             </div>
             <p
-              className={`mt-2 text-sm font-bold ${myRole === "ATTACK" ? "text-red-600" : "text-blue-600"}`}
+              className={`mt-2 font-bold ${myRole === "ATTACK" ? "text-red-600" : "text-blue-600"}`}
+              style={{ fontSize: roleLabelFontSize }}
             >
               {myRole}
             </p>
-            </div>
-            <div className="rounded-xl border border-green-200 bg-green-50 p-3">
-              <div className="mb-1 flex items-center justify-between">
-                <span className="text-xs font-semibold text-[#386641]">
-                  Path Points
-                </span>
-                <span className="text-xs font-bold text-[#386641]">
-                  {remainingPathPoints} / {maxPoints}
-                </span>
-              </div>
-              <div className="flex gap-1">
-                {pathGaugeSegments.map((filled, idx) => (
-                  <div
-                    key={`path-seg-${idx}`}
-                    className={`h-1.5 flex-1 rounded-full ${filled ? "bg-[#386641]" : "bg-[#b9c7bd]"}`}
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
-            </div>
-        </div>
-      </section>
-
-      <aside className="flex h-[620px] flex-col overflow-hidden rounded-2xl border border-slate-200/60 bg-white shadow-sm lg:col-span-4">
-        <div className="flex items-center justify-between border-b border-slate-100 p-4">
-          <h2 className="font-semibold text-lg">Match Chat</h2>
-          <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold uppercase text-green-700">
-            Live
-          </span>
-        </div>
-        <div
-          ref={chatScrollRef}
-          className="flex-1 overflow-y-auto bg-slate-50 p-3"
-        >
-          {chatMessages.length === 0 ? (
-            <div className="py-12 text-center text-sm text-slate-500">
-              No messages yet. Say hi to your opponent!
-            </div>
-          ) : (
-            <ul className="space-y-1">
-              {chatMessages.map((msg) => {
-                const displayName =
-                  msg.nickname?.trim() || msg.user_id.slice(0, 8);
-                return (
-                  <li key={msg.id} className="break-words text-sm text-slate-700">
-                    <span className="font-semibold text-slate-900">
-                      {displayName}
+                </div>
+                <div className="rounded-xl border border-green-200 bg-green-50 p-3">
+                  <div className="mb-1 flex items-center justify-between">
+                    <span className="text-xs font-semibold text-[#386641]">
+                      Path Points
                     </span>
-                    {" : "}
-                    <span>{msg.message}</span>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </div>
-        <div className="border-t border-slate-100 bg-slate-50 p-3">
-          <div className="flex gap-2">
-          <input
-            ref={chatInputRef}
-            value={chatInput}
-            onChange={(e) => setChatInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                void sendChat();
-              }
-            }}
-            maxLength={300}
-            placeholder="Type a message..."
-            className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-[#386641]"
-          />
-          <button
-            type="button"
-            onClick={() => void sendChat()}
-            disabled={chatInput.trim().length === 0}
-            className="rounded-lg bg-[#386641] px-3 py-2 text-sm text-white disabled:cursor-not-allowed disabled:bg-slate-400"
-          >
-            ➤
-          </button>
+                    <span className="text-xs font-bold text-[#386641]">
+                      {remainingPathPoints} / {maxPoints}
+                    </span>
+                  </div>
+                  <div className="flex gap-1">
+                    {pathGaugeSegments.map((filled, idx) => (
+                      <div
+                        key={`path-seg-${idx}`}
+                        className={`h-1.5 flex-1 rounded-full ${filled ? "bg-[#386641]" : "bg-[#b9c7bd]"}`}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-      </aside>
+        </section>
+
+        <aside className="flex h-[620px] flex-col overflow-hidden rounded-2xl border border-slate-200/60 bg-white shadow-sm lg:col-span-4">
+          <div className="flex items-center justify-between border-b border-slate-100 p-4">
+            <h2 className="font-semibold text-lg">Match Chat</h2>
+            <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold uppercase text-green-700">
+              Live
+            </span>
+          </div>
+          <div
+            ref={chatScrollRef}
+            className="flex-1 overflow-y-auto bg-slate-50 p-3"
+          >
+            {chatMessages.length === 0 ? (
+              <div className="py-12 text-center text-sm text-slate-500">
+                No messages yet. Say hi to your opponent!
+              </div>
+            ) : (
+              <ul className="space-y-1">
+                {chatMessages.map((msg) => {
+                  const displayName =
+                    msg.nickname?.trim() || msg.user_id.slice(0, 8);
+                  return (
+                    <li
+                      key={msg.id}
+                      className="break-words text-sm text-slate-700"
+                    >
+                      <span className="font-semibold text-slate-900">
+                        {displayName}
+                      </span>
+                      {" : "}
+                      <span>{msg.message}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+          <div className="border-t border-slate-100 bg-slate-50 p-3">
+            <div className="flex gap-2">
+              <input
+                ref={chatInputRef}
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    void sendChat();
+                  }
+                }}
+                maxLength={300}
+                placeholder="Type a message..."
+                className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-[#386641]"
+              />
+              <button
+                type="button"
+                onClick={() => void sendChat()}
+                disabled={chatInput.trim().length === 0}
+                className="rounded-lg bg-[#386641] px-3 py-2 text-sm text-white disabled:cursor-not-allowed disabled:bg-slate-400"
+              >
+                ➤
+              </button>
+            </div>
+          </div>
+        </aside>
       </main>
 
       {message && (
