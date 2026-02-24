@@ -220,6 +220,7 @@ export function MatchClient({ matchId }: Props) {
   const [chatInput, setChatInput] = useState("");
   const [sendingChat, setSendingChat] = useState(false);
   const [resultReady, setResultReady] = useState(false);
+  const [darkMode, setDarkMode] = useState(false);
 
   const prevMatchRef = useRef<MatchResponse | null>(null);
   const animatingRef = useRef(false);
@@ -620,6 +621,8 @@ export function MatchClient({ matchId }: Props) {
   useEffect(() => {
     const saved = localStorage.getItem("tbs-muted");
     if (saved) setMuted(saved === "1");
+    const savedDark = localStorage.getItem("tbs-dark");
+    if (savedDark) setDarkMode(savedDark === "1");
     supabase.auth.getUser().then(({ data }) => setMe(data.user?.id ?? null));
     loadMatch();
     loadChat();
@@ -629,6 +632,13 @@ export function MatchClient({ matchId }: Props) {
   useEffect(() => {
     localStorage.setItem("tbs-muted", muted ? "1" : "0");
   }, [muted]);
+
+  useEffect(() => {
+    localStorage.setItem("tbs-dark", darkMode ? "1" : "0");
+    if (typeof document !== "undefined") {
+      document.documentElement.classList.toggle("dark", darkMode);
+    }
+  }, [darkMode]);
 
   useEffect(() => {
     if (!shakingHeart) return;
@@ -1289,18 +1299,24 @@ export function MatchClient({ matchId }: Props) {
   );
 
   return (
-    <main className="min-h-screen bg-[#F2E8CF] text-slate-800">
+    <main
+      className={`min-h-screen ${darkMode ? "bg-[#1a1c1a] text-slate-100" : "bg-[#F2E8CF] text-slate-800"}`}
+    >
       <header className="mx-auto max-w-7xl px-6 pb-2 pt-8">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h1 className="flex items-center gap-2 text-3xl font-bold tracking-tight text-slate-900">
+            <h1
+              className={`flex items-center gap-2 text-3xl font-bold tracking-tight ${darkMode ? "text-slate-100" : "text-slate-900"}`}
+            >
               <span className="text-[#386641]">🕹️</span>
               Match{" "}
-              <span className="font-mono text-xl font-medium text-slate-500">
+              <span
+                className={`font-mono text-xl font-medium ${darkMode ? "text-slate-400" : "text-slate-500"}`}
+              >
                 {match.id}
               </span>
             </h1>
-            <p className="mt-2 text-sm text-slate-600">
+            <p className={`mt-2 text-sm ${darkMode ? "text-slate-300" : "text-slate-600"}`}>
               Status: {match.status} | Phase: {match.phase} | Round:{" "}
               {match.current_turn} | Piece: {myColor} | Role: {myRole} | Max
               path points: {maxPoints}
@@ -1310,7 +1326,11 @@ export function MatchClient({ matchId }: Props) {
             <button
               type="button"
               onClick={() => setMuted((v) => !v)}
-              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm"
+              className={`rounded-lg border px-3 py-2 text-sm shadow-sm ${
+                darkMode
+                  ? "border-slate-700 bg-[#2a2d2a] text-slate-100"
+                  : "border-slate-200 bg-white text-slate-700"
+              }`}
             >
               {muted ? "SFX Off" : "SFX On"}
             </button>
@@ -1327,14 +1347,22 @@ export function MatchClient({ matchId }: Props) {
             </button>
           </div>
         </div>
-        <div className="rounded-xl border border-slate-200/70 bg-white p-4 shadow-sm">
-          <div className="mb-2 flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-500">
+        <div
+          className={`rounded-xl border p-4 shadow-sm ${
+            darkMode ? "border-slate-700 bg-[#2a2d2a]" : "border-slate-200/70 bg-white"
+          }`}
+        >
+          <div
+            className={`mb-2 flex items-center justify-between text-xs font-bold uppercase tracking-wider ${
+              darkMode ? "text-slate-300" : "text-slate-500"
+            }`}
+          >
             <span>{match.phase} phase</span>
             <span className="text-[#386641]">
               {isMovingUi ? "moving..." : `timer: ${secondsLeft}s`}
             </span>
           </div>
-          <div className="h-1.5 w-full overflow-hidden rounded bg-slate-200">
+          <div className={`h-1.5 w-full overflow-hidden rounded ${darkMode ? "bg-slate-700" : "bg-slate-200"}`}>
             <div
               className="h-full bg-[#386641]"
               style={{
@@ -1354,7 +1382,11 @@ export function MatchClient({ matchId }: Props) {
       )}
 
       {showResult && (
-        <div className="mx-auto mt-3 max-w-7xl rounded-xl bg-white p-4 shadow-sm">
+        <div
+          className={`mx-auto mt-3 max-w-7xl rounded-xl p-4 shadow-sm ${
+            darkMode ? "bg-[#2a2d2a]" : "bg-white"
+          }`}
+        >
           <div className="flex flex-wrap items-center justify-between gap-3">
             <button
               type="button"
@@ -1385,7 +1417,7 @@ export function MatchClient({ matchId }: Props) {
             {myRematchRequested &&
               !opponentRematchRequested &&
               !match.rematch_match_id && (
-                <p className="text-sm text-slate-600">
+                <p className={`text-sm ${darkMode ? "text-slate-300" : "text-slate-600"}`}>
                   Rematch request sent. Waiting for opponent...
                 </p>
               )}
@@ -1403,7 +1435,11 @@ export function MatchClient({ matchId }: Props) {
       )}
 
       <main className="mx-auto mt-4 grid max-w-7xl grid-cols-1 gap-8 px-6 pb-10 lg:grid-cols-12">
-        <section className="rounded-2xl border border-slate-200/60 bg-white p-6 shadow-sm lg:col-span-8">
+        <section
+          className={`rounded-2xl border p-6 shadow-sm lg:col-span-8 ${
+            darkMode ? "border-slate-700 bg-[#2a2d2a]" : "border-slate-200/60 bg-white"
+          }`}
+        >
           <div className="mb-8 flex items-center justify-between">
             <h2 className="text-xl font-bold">Board 5x5</h2>
             <div className="flex items-center gap-6">
@@ -1718,8 +1754,16 @@ export function MatchClient({ matchId }: Props) {
           </div>
         </section>
 
-        <aside className="flex h-[620px] flex-col overflow-hidden rounded-2xl border border-slate-200/60 bg-white shadow-sm lg:col-span-4">
-          <div className="flex items-center justify-between border-b border-slate-100 p-4">
+        <aside
+          className={`flex h-[620px] flex-col overflow-hidden rounded-2xl border shadow-sm lg:col-span-4 ${
+            darkMode ? "border-slate-700 bg-[#2a2d2a]" : "border-slate-200/60 bg-white"
+          }`}
+        >
+          <div
+            className={`flex items-center justify-between border-b p-4 ${
+              darkMode ? "border-slate-700" : "border-slate-100"
+            }`}
+          >
             <h2 className="font-semibold text-lg">Match Chat</h2>
             <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold uppercase text-green-700">
               Live
@@ -1727,10 +1771,10 @@ export function MatchClient({ matchId }: Props) {
           </div>
           <div
             ref={chatScrollRef}
-            className="flex-1 overflow-y-auto bg-slate-50 p-3"
+            className={`flex-1 overflow-y-auto p-3 ${darkMode ? "bg-[#242822]" : "bg-slate-50"}`}
           >
             {chatMessages.length === 0 ? (
-              <div className="py-12 text-center text-sm text-slate-500">
+              <div className={`py-12 text-center text-sm ${darkMode ? "text-slate-400" : "text-slate-500"}`}>
                 No messages yet. Say hi to your opponent!
               </div>
             ) : (
@@ -1741,9 +1785,9 @@ export function MatchClient({ matchId }: Props) {
                   return (
                     <li
                       key={msg.id}
-                      className="break-words text-sm text-slate-700"
+                      className={`break-words text-sm ${darkMode ? "text-slate-200" : "text-slate-700"}`}
                     >
-                      <span className="font-semibold text-slate-900">
+                      <span className={`font-semibold ${darkMode ? "text-slate-100" : "text-slate-900"}`}>
                         {displayName}
                       </span>
                       {" : "}
@@ -1754,7 +1798,11 @@ export function MatchClient({ matchId }: Props) {
               </ul>
             )}
           </div>
-          <div className="border-t border-slate-100 bg-slate-50 p-3">
+          <div
+            className={`border-t p-3 ${
+              darkMode ? "border-slate-700 bg-[#242822]" : "border-slate-100 bg-slate-50"
+            }`}
+          >
             <div className="flex gap-2">
               <input
                 ref={chatInputRef}
@@ -1768,7 +1816,11 @@ export function MatchClient({ matchId }: Props) {
                 }}
                 maxLength={300}
                 placeholder="Type a message..."
-                className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-[#386641]"
+                className={`flex-1 rounded-lg border px-3 py-2 text-sm outline-none focus:border-[#386641] ${
+                  darkMode
+                    ? "border-slate-700 bg-[#1f231e] text-slate-100"
+                    : "border-slate-300 bg-white text-slate-800"
+                }`}
               />
               <button
                 type="button"
@@ -1789,7 +1841,11 @@ export function MatchClient({ matchId }: Props) {
         </p>
       )}
 
-      <footer className="mx-auto max-w-7xl px-6 pb-12 pt-6 text-center text-sm text-slate-400">
+      <footer
+        className={`mx-auto max-w-7xl px-6 pb-12 pt-6 text-center text-sm ${
+          darkMode ? "text-slate-500" : "text-slate-400"
+        }`}
+      >
         <p>© 2024 TBS Arena</p>
       </footer>
 

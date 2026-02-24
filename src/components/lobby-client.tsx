@@ -46,6 +46,18 @@ export function LobbyClient() {
   }, [supabase]);
 
   useEffect(() => {
+    const savedDark = localStorage.getItem("tbs-dark");
+    if (savedDark) setDarkMode(savedDark === "1");
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("tbs-dark", darkMode ? "1" : "0");
+    if (typeof document !== "undefined") {
+      document.documentElement.classList.toggle("dark", darkMode);
+    }
+  }, [darkMode]);
+
+  useEffect(() => {
     const loadProfile = async () => {
       if (!userId) {
         setSavedNickname(null);
