@@ -95,6 +95,14 @@ const isTypingTarget = (target: EventTarget | null) => {
     target.isContentEditable
   );
 };
+const buildRenderablePathPoints = (start: Coord, path: Coord[]) => {
+  if (path.length === 0) return [start];
+  // Defensive rendering guard:
+  // if start and first point are momentarily inconsistent, skip the bad first segment
+  // so a diagonal "snap" line is never drawn.
+  if (!isOrthogonalStep(start, path[0])) return [...path];
+  return [start, ...path];
+};
 
 const SwordIcon = () => (
   <svg viewBox="0 0 64 64" className="h-full w-full" aria-hidden>
@@ -1243,12 +1251,18 @@ export function MatchClient({ matchId }: Props) {
       })
       .join(" ");
 
-  const planningLine = myPos ? pathToLine([myPos, ...plannedPath]) : "";
+  const planningLine = myPos
+    ? pathToLine(buildRenderablePathPoints(myPos, plannedPath))
+    : "";
   const resolvingP1Line = resolvedOverlay
-    ? pathToLine([resolvedOverlay.start.p1, ...resolvedOverlay.p1])
+    ? pathToLine(
+        buildRenderablePathPoints(resolvedOverlay.start.p1, resolvedOverlay.p1),
+      )
     : "";
   const resolvingP2Line = resolvedOverlay
-    ? pathToLine([resolvedOverlay.start.p2, ...resolvedOverlay.p2])
+    ? pathToLine(
+        buildRenderablePathPoints(resolvedOverlay.start.p2, resolvedOverlay.p2),
+      )
     : "";
   const showResolvedPaths =
     !!resolvedOverlay && (match.phase === "resolving" || animating);
