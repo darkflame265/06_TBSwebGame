@@ -117,6 +117,7 @@ export async function GET(request: Request, context: Context) {
   const playerRows = playersResult.data ?? [];
   const playerIds = playerRows.map((p) => p.user_id);
   const nicknameMap = new Map<string, string | null>();
+  const statsMap = new Map<string, { wins: number; losses: number; win_rate: number }>();
 
   if (playerIds.length > 0) {
     const { data: profileRows, error: profilesError } = await client
@@ -131,13 +132,52 @@ export async function GET(request: Request, context: Context) {
     for (const profile of profileRows ?? []) {
       nicknameMap.set(profile.user_id, profile.nickname ?? null);
     }
+
+    const { data: statRows, error: statsError } = await client
+      .from("match_players")
+      .select("user_id,slot,matches!inner(status,winner_slot)")
+      .in("user_id", playerIds)
+      .eq("matches.status", "finished")
+      .not("matches.winner_slot", "is", null);
+
+    if (statsError) {
+      return jsonError(statsError.message, 400);
+    }
+
+    for (const userId of playerIds) {
+      statsMap.set(userId, { wins: 0, losses: 0, win_rate: 0 });
+    }
+
+    for (const row of statRows ?? []) {
+      const userId = row.user_id as string;
+      const slot = row.slot as number;
+      const matchObj = Array.isArray(row.matches) ? row.matches[0] : row.matches;
+      const winnerSlot =
+        matchObj && typeof matchObj.winner_slot === "number"
+          ? (matchObj.winner_slot as number)
+          : null;
+      if (!winnerSlot) continue;
+      const current = statsMap.get(userId) ?? { wins: 0, losses: 0, win_rate: 0 };
+      if (winnerSlot === slot) current.wins += 1;
+      else current.losses += 1;
+      statsMap.set(userId, current);
+    }
+
+    for (const [userId, stat] of statsMap.entries()) {
+      const total = stat.wins + stat.losses;
+      stat.win_rate = total > 0 ? Math.round((stat.wins / total) * 100) : 0;
+      statsMap.set(userId, stat);
+    }
   }
 
   return NextResponse.json({
     ...matchResult.data,
     players: playerRows.map((player) => ({
       ...player,
-      nickname: nicknameMap.get(player.user_id) ?? null
+      nickname: nicknameMap.get(player.user_id) ?? null,
+      wins: statsMap.get(player.user_id)?.wins ?? 0,
+      losses: statsMap.get(player.user_id)?.losses ?? 0,
+      win_rate: statsMap.get(player.user_id)?.win_rate ?? 0
     })),
     turns: turnsResult.data ?? []
   });

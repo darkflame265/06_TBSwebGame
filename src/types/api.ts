@@ -45,6 +45,9 @@ export type MatchResponse = {
   players: Array<{
     user_id: string;
     nickname: string | null;
+    wins: number;
+    losses: number;
+    win_rate: number;
     slot: number;
     joined_at: string;
   }>;

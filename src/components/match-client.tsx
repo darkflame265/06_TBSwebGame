@@ -1278,6 +1278,12 @@ export function MatchClient({ matchId }: Props) {
   const p2UserId = p2Player?.user_id ?? "-";
   const p1Name = p1Player?.nickname?.trim() || p1UserId;
   const p2Name = p2Player?.nickname?.trim() || p2UserId;
+  const p1Record =
+    p1Player &&
+    `${p1Player.wins}W ${p1Player.losses}L · ${p1Player.win_rate}%`;
+  const p2Record =
+    p2Player &&
+    `${p2Player.wins}W ${p2Player.losses}L · ${p2Player.win_rate}%`;
   const pathGaugeSegments = Array.from({ length: maxPoints }).map(
     (_, idx) => idx < remainingPathPoints,
   );
@@ -1437,7 +1443,10 @@ export function MatchClient({ matchId }: Props) {
                   </button>
                   {openProfileSlot === 1 && (
                     <div className="absolute -bottom-[90px] left-1/2 z-20 w-[320px] -translate-x-1/2 rounded border border-slate-200 bg-white p-3 text-xs text-slate-700 shadow">
-                      <p className="select-text font-semibold">{p1Name}</p>
+                      <p className="select-text font-semibold">
+                        {p1Name}
+                        {p1Record ? ` (${p1Record})` : ""}
+                      </p>
                       <p className="mt-1 select-text break-all font-mono text-[11px]">
                         Guest: {p1UserId}
                       </p>
@@ -1460,7 +1469,10 @@ export function MatchClient({ matchId }: Props) {
                   </button>
                   {openProfileSlot === 2 && (
                     <div className="absolute -bottom-[90px] left-1/2 z-20 w-[320px] -translate-x-1/2 rounded border border-slate-200 bg-white p-3 text-xs text-slate-700 shadow">
-                      <p className="select-text font-semibold">{p2Name}</p>
+                      <p className="select-text font-semibold">
+                        {p2Name}
+                        {p2Record ? ` (${p2Record})` : ""}
+                      </p>
                       <p className="mt-1 select-text break-all font-mono text-[11px]">
                         Guest: {p2UserId}
                       </p>
