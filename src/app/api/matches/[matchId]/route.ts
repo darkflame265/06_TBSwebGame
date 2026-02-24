@@ -133,40 +133,22 @@ export async function GET(request: Request, context: Context) {
       nicknameMap.set(profile.user_id, profile.nickname ?? null);
     }
 
-    const { data: statRows, error: statsError } = await client
-      .from("match_players")
-      .select("user_id,slot,matches!inner(status,winner_slot)")
-      .in("user_id", playerIds)
-      .eq("matches.status", "finished")
-      .not("matches.winner_slot", "is", null);
+    const { data: statRows, error: statsError } = await client.rpc(
+      "get_user_match_stats",
+      { p_user_ids: playerIds }
+    );
 
     if (statsError) {
       return jsonError(statsError.message, 400);
     }
 
-    for (const userId of playerIds) {
-      statsMap.set(userId, { wins: 0, losses: 0, win_rate: 0 });
-    }
-
     for (const row of statRows ?? []) {
       const userId = row.user_id as string;
-      const slot = row.slot as number;
-      const matchObj = Array.isArray(row.matches) ? row.matches[0] : row.matches;
-      const winnerSlot =
-        matchObj && typeof matchObj.winner_slot === "number"
-          ? (matchObj.winner_slot as number)
-          : null;
-      if (!winnerSlot) continue;
-      const current = statsMap.get(userId) ?? { wins: 0, losses: 0, win_rate: 0 };
-      if (winnerSlot === slot) current.wins += 1;
-      else current.losses += 1;
-      statsMap.set(userId, current);
-    }
-
-    for (const [userId, stat] of statsMap.entries()) {
-      const total = stat.wins + stat.losses;
-      stat.win_rate = total > 0 ? Math.round((stat.wins / total) * 100) : 0;
-      statsMap.set(userId, stat);
+      statsMap.set(userId, {
+        wins: Number(row.wins ?? 0),
+        losses: Number(row.losses ?? 0),
+        win_rate: Number(row.win_rate ?? 0)
+      });
     }
   }
 
