@@ -237,6 +237,7 @@ export function MatchClient({ matchId }: Props) {
   const matchRef = useRef<MatchResponse | null>(null);
   const boardClusterHostRef = useRef<HTMLDivElement | null>(null);
   const [boardHostWidth, setBoardHostWidth] = useState(0);
+  const loadMatchSeqRef = useRef(0);
 
   const mySlot = useMemo(() => {
     if (!match || !me) return null;
@@ -444,8 +445,10 @@ export function MatchClient({ matchId }: Props) {
   };
 
   const loadMatch = async () => {
+    const seq = ++loadMatchSeqRef.current;
     try {
       const data = await apiGet<MatchResponse>(`/api/matches/${matchId}`);
+      if (seq !== loadMatchSeqRef.current) return;
       const nextBoard = data.board_state ?? DEFAULT_BOARD;
       const prev = prevMatchRef.current;
 
@@ -534,6 +537,7 @@ export function MatchClient({ matchId }: Props) {
       matchRef.current = data;
       setMatch(data);
     } catch (error) {
+      if (seq !== loadMatchSeqRef.current) return;
       setMessage(
         error instanceof Error ? error.message : "Failed to load match",
       );
