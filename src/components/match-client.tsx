@@ -1152,6 +1152,13 @@ export function MatchClient({ matchId }: Props) {
     mySlot !== null &&
     match.winner_slot !== null &&
     match.winner_slot !== mySlot;
+  const opponentLeft = Boolean(
+    (match.ended_reason === "player_left" &&
+      match.left_by &&
+      me &&
+      match.left_by !== me) ||
+      (presenceReady && !!opponentUserId && !opponentOnline),
+  );
 
   const beginPathDrag = (row: number, col: number) => {
     if (!canPlan || !currentEnd) return;
@@ -1409,23 +1416,21 @@ export function MatchClient({ matchId }: Props) {
             </button>
             {opponentRematchRequested &&
               !myRematchRequested &&
-              !match.rematch_match_id && (
+              !match.rematch_match_id &&
+              !opponentLeft && (
                 <p className="text-sm font-semibold text-indigo-700">
                   The opponent has requested a rematch.
                 </p>
               )}
             {myRematchRequested &&
               !opponentRematchRequested &&
-              !match.rematch_match_id && (
+              !match.rematch_match_id &&
+              !opponentLeft && (
                 <p className={`text-sm ${darkMode ? "text-slate-300" : "text-slate-600"}`}>
                   Rematch request sent. Waiting for opponent...
                 </p>
               )}
-            {((match.ended_reason === "player_left" &&
-              match.left_by &&
-              me &&
-              match.left_by !== me) ||
-              (presenceReady && !!opponentUserId && !opponentOnline)) && (
+            {opponentLeft && (
               <p className="text-sm font-semibold text-rose-700">
                 The opponent has left the game.
               </p>
