@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getAuthedUser, jsonError, parseBody } from "@/lib/api";
+import { createAdminSupabase } from "@/lib/supabase/server";
 
 const paramsSchema = z.object({
   matchId: z.string().uuid()
@@ -44,6 +45,31 @@ export async function POST(request: Request, context: Context) {
     return jsonError(rpcError.message, 400);
   }
 
+  const admin = createAdminSupabase();
+  const { data: matchRow } = await admin
+    .from("matches")
+    .select("id,type,phase,current_turn,resolve_ack_p2")
+    .eq("id", parsedParams.data.matchId)
+    .maybeSingle();
+
+  if (
+    matchRow &&
+    matchRow.type === "ai" &&
+    matchRow.phase === "resolving" &&
+    matchRow.current_turn === body.data.turn &&
+    !matchRow.resolve_ack_p2
+  ) {
+    await admin
+      .from("matches")
+      .update({ resolve_ack_p2: true })
+      .eq("id", parsedParams.data.matchId)
+      .eq("phase", "resolving")
+      .eq("current_turn", body.data.turn);
+
+    await client.rpc("tick_match_round", {
+      p_match_id: parsedParams.data.matchId
+    });
+  }
+
   return NextResponse.json({ ok: true });
 }
-

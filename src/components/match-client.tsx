@@ -683,10 +683,11 @@ export function MatchClient({ matchId }: Props) {
   }, []);
 
   useEffect(() => {
-    const poll = setInterval(() => loadMatch(), 1000);
+    const pollMs = match?.type === "ai" ? 250 : 1000;
+    const poll = setInterval(() => loadMatch(), pollMs);
     return () => clearInterval(poll);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [matchId]);
+  }, [matchId, match?.type]);
 
   useEffect(() => {
     const poll = setInterval(() => loadChat(), 500);
