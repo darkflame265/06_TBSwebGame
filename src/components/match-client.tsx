@@ -361,10 +361,6 @@ export function MatchClient({ matchId }: Props) {
     setFrozenTimerMs(Math.max(0, latestMillisLeftRef.current));
     animatingRef.current = true;
     setAnimating(true);
-    if (aiFastMode && ackedResolveTurnRef.current !== turn) {
-      ackedResolveTurnRef.current = turn;
-      void ackResolve(turn);
-    }
     let didTriggerHit = false;
 
     let p1 = start.p1;
@@ -1360,19 +1356,58 @@ export function MatchClient({ matchId }: Props) {
             <h1
               className={`flex items-center gap-2 text-3xl font-bold tracking-tight ${darkMode ? "text-slate-100" : "text-slate-900"}`}
             >
-              <span className="text-[#386641]">🕹️</span>
+              <span className="text-[#ef4444]">🎮</span>
               Match{" "}
               <span
-                className={`font-mono text-xl font-medium ${darkMode ? "text-slate-400" : "text-slate-500"}`}
+                className={`rounded-md px-2 py-1 font-mono text-sm font-medium ${
+                  darkMode
+                    ? "bg-[#1E252B] text-[#9AA4AE]"
+                    : "bg-slate-200 text-slate-600"
+                }`}
               >
                 {match.id}
               </span>
             </h1>
-            <p className={`mt-2 text-sm ${darkMode ? "text-slate-300" : "text-slate-600"}`}>
-              Status: {match.status} | Phase: {match.phase} | Round:{" "}
-              {match.current_turn} | Piece: {myColor} | Role: {myRole} | Max
-              path points: {maxPoints}
-            </p>
+            <div
+              className={`mt-2 flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] ${
+                darkMode ? "text-[#9AA4AE]" : "text-slate-600"
+              }`}
+            >
+              <span>
+                Status:{" "}
+                <span
+                  className={`${
+                    match.status === "active"
+                      ? "text-emerald-500"
+                      : match.status === "finished"
+                        ? "text-rose-500"
+                        : darkMode
+                          ? "text-slate-200"
+                          : "text-slate-800"
+                  }`}
+                >
+                  {match.status}
+                </span>
+              </span>
+              <span className="opacity-50">|</span>
+              <span>
+                Phase:{" "}
+                <span className={match.phase === "planning" ? "text-amber-400" : "text-blue-400"}>
+                  {match.phase}
+                </span>
+              </span>
+              <span className="opacity-50">|</span>
+              <span>Round: {match.current_turn}</span>
+              <span className="opacity-50">|</span>
+              <span>
+                Piece:{" "}
+                <span className={myColor === "Red" ? "text-red-500" : "text-blue-400"}>
+                  {myColor}
+                </span>
+              </span>
+              <span className="opacity-50">|</span>
+              <span>Role: {myRole}</span>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -1410,15 +1445,21 @@ export function MatchClient({ matchId }: Props) {
             }`}
           >
             <span>{match.phase} phase</span>
-            <span className="text-[#386641]">
-              {isMovingUi ? "moving..." : `timer: ${secondsLeft}s`}
-            </span>
+            <div className="flex items-center gap-3">
+              {match.phase === "planning" && !obstaclesReadyForTurn && (
+                <span
+                  className={`text-[11px] font-semibold normal-case ${
+                    darkMode ? "text-amber-400" : "text-amber-700"
+                  }`}
+                >
+                  Preparing obstacle layout...
+                </span>
+              )}
+              <span className="text-[#386641]">
+                {isMovingUi ? "moving..." : `timer: ${secondsLeft}s`}
+              </span>
+            </div>
           </div>
-          {match.phase === "planning" && !obstaclesReadyForTurn && (
-            <p className={`mb-2 text-xs font-semibold ${darkMode ? "text-amber-400" : "text-amber-700"}`}>
-              Preparing obstacle layout...
-            </p>
-          )}
           <div className={`h-1.5 w-full overflow-hidden rounded ${darkMode ? "bg-[#2A3137]" : "bg-slate-200"}`}>
             <div
               className="h-full bg-[#386641]"
