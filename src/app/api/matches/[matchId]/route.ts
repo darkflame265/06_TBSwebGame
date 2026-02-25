@@ -3,10 +3,13 @@ import { z } from "zod";
 import { getAuthedUser, jsonError } from "@/lib/api";
 import { createAdminSupabase } from "@/lib/supabase/server";
 import { generateObstacles, seedForMatchRound, type Coord } from "@/lib/obstacles";
+import { generatePathForRole } from "@/lib/ai-planner";
 
 const paramsSchema = z.object({
   matchId: z.string().uuid()
 });
+const AI_USER_ID = "00000000-0000-0000-0000-000000000001";
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 type Context = {
   params: Promise<{ matchId: string }>;
@@ -34,13 +37,15 @@ export async function GET(request: Request, context: Context) {
 
   const { data: obstacleState, error: obstacleStateError } = await client
     .from("matches")
-    .select("id,current_turn,phase,board_state,attacker_slot,obstacles_turn")
+    .select("id,type,status,current_turn,phase,board_state,attacker_slot,obstacles,obstacles_turn")
     .eq("id", matchId)
     .maybeSingle();
 
   if (obstacleStateError) {
     return jsonError(obstacleStateError.message, 400);
   }
+
+  let planningObstacles = (obstacleState?.obstacles ?? []) as Coord[];
 
   if (
     obstacleState &&
@@ -64,6 +69,7 @@ export async function GET(request: Request, context: Context) {
       const [x, y] = key.split(",").map(Number);
       return [x, y] as [number, number];
     });
+    planningObstacles = obstacleArray;
 
     const admin = createAdminSupabase();
     const { error: updateObstacleError } = await admin
@@ -78,6 +84,53 @@ export async function GET(request: Request, context: Context) {
 
     if (updateObstacleError) {
       return jsonError(updateObstacleError.message, 400);
+    }
+  }
+
+  if (obstacleState?.type === "ai" && obstacleState.status === "active" && obstacleState.phase === "planning") {
+    const { data: currentTurns, error: turnsError } = await client
+      .from("turns")
+      .select("player_slot")
+      .eq("match_id", matchId)
+      .eq("turn_number", obstacleState.current_turn);
+
+    if (turnsError) {
+      return jsonError(turnsError.message, 400);
+    }
+
+    const botAlreadySubmitted = (currentTurns ?? []).some((t) => t.player_slot === 2);
+    if (!botAlreadySubmitted && obstacleState.board_state) {
+      const p1 = obstacleState.board_state.p1 as Coord;
+      const p2 = obstacleState.board_state.p2 as Coord;
+      const maxPoints = Math.min(obstacleState.current_turn + 4, 10);
+      const role = obstacleState.attacker_slot === 2 ? "ATTACK" : "EVADE";
+      const path = generatePathForRole({
+        gridSize: 5,
+        role,
+        maxPoints,
+        selfPos: p2,
+        opponentPos: p1,
+        obstacles: planningObstacles
+      });
+
+      await sleep(300 + Math.floor(Math.random() * 401));
+
+      const { error: botSubmitError } = await client.rpc("submit_bot_turn", {
+        p_match_id: matchId,
+        p_round: obstacleState.current_turn,
+        p_action: { path }
+      });
+
+      if (botSubmitError) {
+        const msg = botSubmitError.message.toLowerCase();
+        const ignorable =
+          msg.includes("stale round") ||
+          msg.includes("planning window closed") ||
+          msg.includes("round is resolving");
+        if (!ignorable) {
+          return jsonError(botSubmitError.message, 400);
+        }
+      }
     }
   }
 
@@ -115,7 +168,11 @@ export async function GET(request: Request, context: Context) {
   }
 
   const playerRows = playersResult.data ?? [];
-  const playerIds = playerRows.map((p) => p.user_id);
+  const normalizedPlayers =
+    matchResult.data.type === "ai" && !playerRows.some((p) => p.slot === 2)
+      ? [...playerRows, { user_id: AI_USER_ID, slot: 2, joined_at: matchResult.data.created_at }]
+      : playerRows;
+  const playerIds = normalizedPlayers.map((p) => p.user_id).filter((id) => id !== AI_USER_ID);
   const nicknameMap = new Map<string, string | null>();
   const statsMap = new Map<string, { wins: number; losses: number; win_rate: number }>();
 
@@ -154,12 +211,12 @@ export async function GET(request: Request, context: Context) {
 
   return NextResponse.json({
     ...matchResult.data,
-    players: playerRows.map((player) => ({
+    players: normalizedPlayers.map((player) => ({
       ...player,
-      nickname: nicknameMap.get(player.user_id) ?? null,
-      wins: statsMap.get(player.user_id)?.wins ?? 0,
-      losses: statsMap.get(player.user_id)?.losses ?? 0,
-      win_rate: statsMap.get(player.user_id)?.win_rate ?? 0
+      nickname: player.user_id === AI_USER_ID ? "AI Bot" : (nicknameMap.get(player.user_id) ?? null),
+      wins: player.user_id === AI_USER_ID ? 0 : (statsMap.get(player.user_id)?.wins ?? 0),
+      losses: player.user_id === AI_USER_ID ? 0 : (statsMap.get(player.user_id)?.losses ?? 0),
+      win_rate: player.user_id === AI_USER_ID ? 0 : (statsMap.get(player.user_id)?.win_rate ?? 0)
     })),
     turns: turnsResult.data ?? []
   });

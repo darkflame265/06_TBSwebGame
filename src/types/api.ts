@@ -1,5 +1,5 @@
 export type MatchStatus = "waiting" | "active" | "finished";
-export type MatchType = "friend" | "random";
+export type MatchType = "friend" | "random" | "ai";
 
 export type MatchResponse = {
   id: string;

@@ -280,8 +280,20 @@ export function MatchClient({ matchId }: Props) {
     if (!match || !me) return null;
     return match.players.find((p) => p.user_id !== me)?.user_id ?? null;
   }, [match, me]);
+  const isAiMatch = match?.type === "ai";
+  const aiSubmittedThisRound = useMemo(() => {
+    if (!match) return false;
+    return match.turns.some(
+      (t) => t.turn_number === match.current_turn && t.player_slot === 2,
+    );
+  }, [match]);
+  const showAiThinking =
+    match?.type === "ai" &&
+    match.phase === "planning" &&
+    match.status === "active" &&
+    !aiSubmittedThisRound;
   const opponentOnline =
-    !!opponentUserId && onlineUserIds.includes(opponentUserId);
+    isAiMatch || (!!opponentUserId && onlineUserIds.includes(opponentUserId));
 
   const playHitSfx = () => {
     if (muted) return;
@@ -1157,7 +1169,7 @@ export function MatchClient({ matchId }: Props) {
       match.left_by &&
       me &&
       match.left_by !== me) ||
-      (presenceReady && !!opponentUserId && !opponentOnline),
+      (!isAiMatch && presenceReady && !!opponentUserId && !opponentOnline),
   );
 
   const beginPathDrag = (row: number, col: number) => {
@@ -1395,25 +1407,31 @@ export function MatchClient({ matchId }: Props) {
           }`}
         >
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <button
-              type="button"
-              onClick={requestRematch}
-              disabled={
-                requestingRematch ||
-                myRematchRequested ||
-                !!match.rematch_match_id ||
-                (presenceReady && !opponentOnline)
-              }
-              className="rounded-lg bg-indigo-700 px-4 py-2 text-white disabled:cursor-not-allowed disabled:bg-slate-400"
-            >
-              {match.rematch_match_id
-                ? "Starting rematch..."
-                : myRematchRequested
-                  ? "Rematch requested"
-                  : requestingRematch
-                    ? "Requesting..."
-                    : "REMATCH"}
-            </button>
+            {match.type !== "ai" ? (
+              <button
+                type="button"
+                onClick={requestRematch}
+                disabled={
+                  requestingRematch ||
+                  myRematchRequested ||
+                  !!match.rematch_match_id ||
+                  (presenceReady && !opponentOnline)
+                }
+                className="rounded-lg bg-indigo-700 px-4 py-2 text-white disabled:cursor-not-allowed disabled:bg-slate-400"
+              >
+                {match.rematch_match_id
+                  ? "Starting rematch..."
+                  : myRematchRequested
+                    ? "Rematch requested"
+                    : requestingRematch
+                      ? "Requesting..."
+                      : "REMATCH"}
+              </button>
+            ) : (
+              <p className={`text-sm ${darkMode ? "text-slate-300" : "text-slate-600"}`}>
+                AI match finished.
+              </p>
+            )}
             {opponentRematchRequested &&
               !myRematchRequested &&
               !match.rematch_match_id &&
@@ -1527,6 +1545,11 @@ export function MatchClient({ matchId }: Props) {
                   >
                     {p2Name}
                   </p>
+                  {showAiThinking && (
+                    <p className="text-[10px] font-semibold text-emerald-600">
+                      AI is thinking...
+                    </p>
+                  )}
                   <div className="mt-0.5 flex gap-0.5">
                     {heartsForHp(displayHp.p2).map((filled, idx) => (
                       <span

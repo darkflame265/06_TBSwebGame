@@ -24,6 +24,10 @@ type ProfileResponse = {
   nickname: string | null;
 };
 
+type AiMatchCreateResponse = {
+  match_id: string;
+};
+
 export function LobbyClient() {
   const router = useRouter();
   const supabase = getBrowserSupabaseClient();
@@ -219,8 +223,14 @@ export function LobbyClient() {
     }
   };
 
-  const startAiMatch = () => {
-    setMessage("AI match is not wired yet. I can connect backend flow next.");
+  const startAiMatch = async () => {
+    setMessage(null);
+    try {
+      const data = await apiPost<AiMatchCreateResponse>("/api/ai-match/create");
+      router.push(`/match/${data.match_id}`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to start AI match");
+    }
   };
 
   const elapsedQueueSeconds =
