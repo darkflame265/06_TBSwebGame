@@ -32,12 +32,15 @@ export function LobbyClient() {
   const [roomCode, setRoomCode] = useState("");
   const [createdRoom, setCreatedRoom] = useState<RoomCreateResponse | null>(null);
   const [queueing, setQueueing] = useState(false);
+  const [queueStartedAt, setQueueStartedAt] = useState<number | null>(null);
+  const [queueNow, setQueueNow] = useState(Date.now());
   const [message, setMessage] = useState<string | null>(null);
   const [nicknameInput, setNicknameInput] = useState("");
   const [savedNickname, setSavedNickname] = useState<string | null>(null);
   const [savingNickname, setSavingNickname] = useState(false);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const queueTicketRef = useRef<string | null>(null);
+  const queueActiveRef = useRef(false);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -83,6 +86,12 @@ export function LobbyClient() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!queueing) return;
+    const t = setInterval(() => setQueueNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [queueing]);
+
   const signInGuest = async () => {
     setMessage(null);
     const { data, error } = await supabase.auth.signInAnonymously();
@@ -124,11 +133,16 @@ export function LobbyClient() {
       }
 
       if (data.status === "matched" && data.match_id) {
+        if (!queueActiveRef.current) {
+          return false;
+        }
         if (intervalRef.current) {
           clearInterval(intervalRef.current);
         }
         setQueueing(false);
+        setQueueStartedAt(null);
         queueTicketRef.current = null;
+        queueActiveRef.current = false;
         router.push(`/match/${data.match_id}`);
         return true;
       }
@@ -136,16 +150,40 @@ export function LobbyClient() {
       return false;
     } catch (error) {
       setQueueing(false);
+      setQueueStartedAt(null);
       queueTicketRef.current = null;
+      queueActiveRef.current = false;
       setMessage(error instanceof Error ? error.message : "Failed to join matchmaking queue");
       return false;
     }
   };
 
+  const cancelMatchmaking = async () => {
+    queueActiveRef.current = false;
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    queueTicketRef.current = null;
+    setQueueing(false);
+    setQueueStartedAt(null);
+    try {
+      await apiPost("/api/matchmaking/leave");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to cancel matchmaking queue");
+    }
+  };
+
   const joinMatchmaking = async () => {
+    if (queueing) {
+      await cancelMatchmaking();
+      return;
+    }
     setMessage(null);
     setQueueing(true);
+    setQueueStartedAt(Date.now());
     queueTicketRef.current = null;
+    queueActiveRef.current = true;
 
     const matched = await tryMatchmake(null);
     if (matched) {
@@ -157,6 +195,7 @@ export function LobbyClient() {
     }
 
     intervalRef.current = setInterval(async () => {
+      if (!queueActiveRef.current) return;
       const done = await tryMatchmake(queueTicketRef.current);
       if (done && intervalRef.current) {
         clearInterval(intervalRef.current);
@@ -179,6 +218,18 @@ export function LobbyClient() {
       setSavingNickname(false);
     }
   };
+
+  const elapsedQueueSeconds =
+    queueing && queueStartedAt ? Math.floor((queueNow - queueStartedAt) / 1000) : 0;
+  const estimatedWaitLabel = (() => {
+    const target = 15;
+    const remaining = Math.max(0, target - elapsedQueueSeconds);
+    const mm = Math.floor(remaining / 60)
+      .toString()
+      .padStart(1, "0");
+    const ss = (remaining % 60).toString().padStart(2, "0");
+    return `${mm}:${ss}`;
+  })();
 
   return (
     <main
@@ -333,12 +384,31 @@ export function LobbyClient() {
               </span>
               <h2 className="text-xl font-bold">Random Matchmaking</h2>
             </div>
+            {queueing ? (
+              <div className="mb-6 py-3 text-center">
+                <div className="flex items-center justify-center gap-3">
+                  <span className="relative inline-flex h-3 w-3">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-75" />
+                    <span className="relative inline-flex h-3 w-3 animate-pulse rounded-full bg-green-600" />
+                  </span>
+                  <p className={`text-lg font-medium ${darkMode ? "text-slate-300" : "text-slate-500"}`}>
+                    Searching for an opponent...
+                  </p>
+                </div>
+                <p className={`mt-2 text-sm ${darkMode ? "text-slate-500" : "text-slate-400"}`}>
+                  Estimated wait: {estimatedWaitLabel}
+                </p>
+              </div>
+            ) : null}
+
             <button
               onClick={joinMatchmaking}
-              disabled={!userId || queueing}
-              className="w-full rounded-xl bg-[#386641] px-8 py-5 text-lg font-bold text-white transition hover:bg-[#2a4d31] disabled:cursor-not-allowed disabled:bg-slate-400"
+              disabled={!userId}
+              className={`w-full rounded-2xl px-8 py-6 text-xl font-bold text-white transition active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-slate-400 ${
+                queueing ? "bg-[#3f4e61] hover:bg-[#344151]" : "bg-[#386641] hover:bg-[#2a4d31]"
+              }`}
             >
-              {queueing ? "Queueing..." : "Join Matchmaking Queue"}
+              {queueing ? "Cancel Matchmaking" : "Join Matchmaking Queue"}
             </button>
           </section>
         </div>
