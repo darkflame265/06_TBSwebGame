@@ -250,10 +250,15 @@ export function MatchClient({ matchId }: Props) {
       (t) => t.turn_number === match.current_turn && t.player_slot === mySlot,
     );
   }, [match, mySlot]);
+  const obstaclesReadyForTurn =
+    !match ||
+    match.phase !== "planning" ||
+    match.obstacles_turn === match.current_turn;
   const canPlan =
     !!match &&
     match.status === "active" &&
     match.phase === "planning" &&
+    obstaclesReadyForTurn &&
     mySlot !== null &&
     !mySubmitted &&
     !animating &&
@@ -661,6 +666,16 @@ export function MatchClient({ matchId }: Props) {
   useEffect(() => {
     plannedPathRef.current = plannedPath;
   }, [plannedPath]);
+
+  useEffect(() => {
+    if (!match) return;
+    if (match.phase !== "planning") return;
+    if (match.obstacles_turn === match.current_turn) return;
+    setPlannedPath([]);
+    plannedPathRef.current = [];
+    lockedPathRef.current = null;
+    setDraggingPath(false);
+  }, [match?.phase, match?.current_turn, match?.obstacles_turn, match]);
 
   useEffect(() => {
     const timer = setInterval(() => setNowMs(Date.now()), 33);
@@ -1387,6 +1402,11 @@ export function MatchClient({ matchId }: Props) {
               {isMovingUi ? "moving..." : `timer: ${secondsLeft}s`}
             </span>
           </div>
+          {match.phase === "planning" && !obstaclesReadyForTurn && (
+            <p className={`mb-2 text-xs font-semibold ${darkMode ? "text-amber-400" : "text-amber-700"}`}>
+              Preparing obstacle layout...
+            </p>
+          )}
           <div className={`h-1.5 w-full overflow-hidden rounded ${darkMode ? "bg-[#2A3137]" : "bg-slate-200"}`}>
             <div
               className="h-full bg-[#386641]"
