@@ -36,19 +36,64 @@ const legalMovesNoRevisit = (
 
 const pickRandom = <T>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)];
 
+const maxFutureChain = (
+  from: Coord,
+  remainingSteps: number,
+  gridSize: number,
+  obstacleSet: Set<string>,
+  visited: Set<string>
+): number => {
+  if (remainingSteps <= 0) return 0;
+  const moves = legalMovesNoRevisit(from, gridSize, obstacleSet, visited);
+  if (moves.length === 0) return 0;
+
+  let best = 0;
+  for (const next of moves) {
+    const key = toKey(next);
+    visited.add(key);
+    const depth = 1 + maxFutureChain(next, remainingSteps - 1, gridSize, obstacleSet, visited);
+    visited.delete(key);
+    if (depth > best) best = depth;
+  }
+  return best;
+};
+
 export const chooseMoveChase = (
   current: Coord,
   target: Coord,
   gridSize: number,
   obstacleSet: Set<string>,
-  visited: Set<string>
+  visited: Set<string>,
+  remainingStepsAfterMove: number
 ): Coord | null => {
   const moves = legalMovesNoRevisit(current, gridSize, obstacleSet, visited);
   if (moves.length === 0) return null;
 
   const scored = moves
-    .map((move) => ({ move, score: manhattan(move, target) }))
-    .sort((a, b) => a.score - b.score);
+    .map((move) => {
+      const key = toKey(move);
+      visited.add(key);
+      const runway = maxFutureChain(
+        move,
+        remainingStepsAfterMove,
+        gridSize,
+        obstacleSet,
+        visited
+      );
+      visited.delete(key);
+      return {
+        move,
+        dist: manhattan(move, target),
+        runway
+      };
+    })
+    .sort((a, b) => {
+      // Primary: reduce distance to target.
+      if (a.dist !== b.dist) return a.dist - b.dist;
+      // Secondary: avoid dead-ends so AI can spend more path points.
+      if (a.runway !== b.runway) return b.runway - a.runway;
+      return 0;
+    });
 
   if (scored.length > 1 && Math.random() < 0.2) {
     return pickRandom(scored.slice(0, 2)).move;
@@ -108,9 +153,17 @@ export const generatePathForRole = ({
         );
 
   for (let i = 0; i < spendPoints; i += 1) {
+    const remainingAfterMove = spendPoints - i - 1;
     const next =
       role === "ATTACK"
-        ? chooseMoveChase(cur, opponentPos, gridSize, obstacleSet, visited)
+        ? chooseMoveChase(
+            cur,
+            opponentPos,
+            gridSize,
+            obstacleSet,
+            visited,
+            remainingAfterMove
+          )
         : chooseMoveFlee(cur, opponentPos, gridSize, obstacleSet, visited);
 
     if (!next) break;
