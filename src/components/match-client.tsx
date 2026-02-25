@@ -1009,12 +1009,18 @@ export function MatchClient({ matchId }: Props) {
 
   const requestRematch = async () => {
     if (!match || match.status !== "finished" || requestingRematch) return;
-    if (presenceReady && !opponentOnline) {
+    if (match.type !== "ai" && presenceReady && !opponentOnline) {
       setMessage("The opponent is offline. Rematch is unavailable.");
       return;
     }
     setRequestingRematch(true);
     try {
+      if (match.type === "ai") {
+        const data = await apiPost<{ match_id: string }>("/api/ai-match/create");
+        router.push(`/match/${data.match_id}`);
+        return;
+      }
+
       const res = await apiPost<{
         status: "waiting" | "started";
         match_id?: string;
@@ -1407,28 +1413,35 @@ export function MatchClient({ matchId }: Props) {
           }`}
         >
           <div className="flex flex-wrap items-center justify-between gap-3">
-            {match.type !== "ai" ? (
-              <button
-                type="button"
-                onClick={requestRematch}
-                disabled={
-                  requestingRematch ||
-                  myRematchRequested ||
-                  !!match.rematch_match_id ||
-                  (presenceReady && !opponentOnline)
-                }
-                className="rounded-lg bg-indigo-700 px-4 py-2 text-white disabled:cursor-not-allowed disabled:bg-slate-400"
-              >
-                {match.rematch_match_id
+            <button
+              type="button"
+              onClick={requestRematch}
+              disabled={
+                match.type === "ai"
+                  ? requestingRematch
+                  : requestingRematch ||
+                    myRematchRequested ||
+                    !!match.rematch_match_id ||
+                    (presenceReady && !opponentOnline)
+              }
+              className="rounded-lg bg-indigo-700 px-4 py-2 text-white disabled:cursor-not-allowed disabled:bg-slate-400"
+            >
+              {match.type === "ai"
+                ? requestingRematch
+                  ? "Starting..."
+                  : "REMATCH"
+                : match.rematch_match_id
                   ? "Starting rematch..."
                   : myRematchRequested
                     ? "Rematch requested"
                     : requestingRematch
                       ? "Requesting..."
                       : "REMATCH"}
-              </button>
-            ) : (
-              <p className={`text-sm ${darkMode ? "text-slate-300" : "text-slate-600"}`}>
+            </button>
+            {match.type === "ai" && (
+              <p
+                className={`ml-auto text-sm ${darkMode ? "text-slate-300" : "text-slate-600"}`}
+              >
                 AI match finished.
               </p>
             )}
