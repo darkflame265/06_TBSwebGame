@@ -1325,7 +1325,7 @@ export function MatchClient({ matchId }: Props) {
 
   return (
     <main
-      className={`min-h-screen ${darkMode ? "bg-[#1a1c1a] text-slate-100" : "bg-[#F2E8CF] text-slate-800"}`}
+      className={`min-h-screen ${darkMode ? "bg-[#12181B] text-slate-100" : "bg-[#F2E8CF] text-slate-800"}`}
     >
       <header className="mx-auto max-w-7xl px-6 pb-2 pt-8">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -1353,7 +1353,7 @@ export function MatchClient({ matchId }: Props) {
               onClick={() => setMuted((v) => !v)}
               className={`rounded-lg border px-3 py-2 text-sm shadow-sm ${
                 darkMode
-                  ? "border-slate-700 bg-[#2a2d2a] text-slate-100"
+                  ? "border-[#3A444D] bg-[#1E252B] text-slate-100"
                   : "border-slate-200 bg-white text-slate-700"
               }`}
             >
@@ -1374,7 +1374,7 @@ export function MatchClient({ matchId }: Props) {
         </div>
         <div
           className={`rounded-xl border p-4 shadow-sm ${
-            darkMode ? "border-slate-700 bg-[#2a2d2a]" : "border-slate-200/70 bg-white"
+            darkMode ? "border-[#3A444D] bg-[#1E252B]" : "border-slate-200/70 bg-white"
           }`}
         >
           <div
@@ -1387,7 +1387,7 @@ export function MatchClient({ matchId }: Props) {
               {isMovingUi ? "moving..." : `timer: ${secondsLeft}s`}
             </span>
           </div>
-          <div className={`h-1.5 w-full overflow-hidden rounded ${darkMode ? "bg-slate-700" : "bg-slate-200"}`}>
+          <div className={`h-1.5 w-full overflow-hidden rounded ${darkMode ? "bg-[#2A3137]" : "bg-slate-200"}`}>
             <div
               className="h-full bg-[#386641]"
               style={{
@@ -1409,7 +1409,7 @@ export function MatchClient({ matchId }: Props) {
       {showResult && (
         <div
           className={`mx-auto mt-3 max-w-7xl rounded-xl p-4 shadow-sm ${
-            darkMode ? "bg-[#2a2d2a]" : "bg-white"
+            darkMode ? "bg-[#1E252B]" : "bg-white"
           }`}
         >
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1473,7 +1473,7 @@ export function MatchClient({ matchId }: Props) {
       <main className="mx-auto mt-4 grid max-w-7xl grid-cols-1 gap-8 px-6 pb-10 lg:grid-cols-12">
         <section
           className={`rounded-2xl border p-6 shadow-sm lg:col-span-8 ${
-            darkMode ? "border-slate-700 bg-[#2a2d2a]" : "border-slate-200/60 bg-white"
+            darkMode ? "border-[#3A444D] bg-[#1E252B]" : "border-slate-200/60 bg-white"
           }`}
         >
           <div className="mb-8 flex items-center justify-between">
@@ -1514,7 +1514,13 @@ export function MatchClient({ matchId }: Props) {
                     <span>◎</span>
                   </button>
                   {openProfileSlot === 1 && (
-                    <div className="absolute -bottom-[90px] left-1/2 z-20 w-[320px] -translate-x-1/2 rounded border border-slate-200 bg-white p-3 text-xs text-slate-700 shadow">
+                    <div
+                      className={`absolute -bottom-[90px] left-1/2 z-20 w-[320px] -translate-x-1/2 rounded border p-3 text-xs shadow ${
+                        darkMode
+                          ? "border-[#3A444D] bg-[#2A3137] text-slate-200"
+                          : "border-slate-200 bg-white text-slate-700"
+                      }`}
+                    >
                       <p className="select-text font-semibold">
                         {p1Name}
                         {p1Record ? ` (${p1Record})` : ""}
@@ -1540,7 +1546,13 @@ export function MatchClient({ matchId }: Props) {
                     <span>◎</span>
                   </button>
                   {openProfileSlot === 2 && (
-                    <div className="absolute -bottom-[90px] left-1/2 z-20 w-[320px] -translate-x-1/2 rounded border border-slate-200 bg-white p-3 text-xs text-slate-700 shadow">
+                    <div
+                      className={`absolute -bottom-[90px] left-1/2 z-20 w-[320px] -translate-x-1/2 rounded border p-3 text-xs shadow ${
+                        darkMode
+                          ? "border-[#3A444D] bg-[#2A3137] text-slate-200"
+                          : "border-slate-200 bg-white text-slate-700"
+                      }`}
+                    >
                       <p className="select-text font-semibold">
                         {p2Name}
                         {p2Record ? ` (${p2Record})` : ""}
@@ -1616,8 +1628,12 @@ export function MatchClient({ matchId }: Props) {
                             onClick={() => tapPathStep(row, col)}
                             className={`relative rounded-lg border text-[10px] ${
                               isObstacle
-                                ? "cursor-not-allowed border-slate-700 bg-slate-800 text-slate-300"
-                                : `border-slate-200 bg-slate-50 text-slate-500 ${canPlan ? "hover:bg-slate-100" : "cursor-default"}`
+                                ? darkMode
+                                  ? "cursor-not-allowed border-[#3A444D] bg-slate-900/80 text-slate-300"
+                                  : "cursor-not-allowed border-slate-700 bg-slate-800 text-slate-300"
+                                : darkMode
+                                  ? `border-[#3A444D] bg-[#2A3137] text-[#9AA4AE] ${canPlan ? "hover:bg-[#333C44]" : "cursor-default"}`
+                                  : `border-slate-200 bg-slate-50 text-slate-500 ${canPlan ? "hover:bg-slate-100" : "cursor-default"}`
                             }`}
                             style={{
                               width: boardCellSize,
@@ -1750,15 +1766,29 @@ export function MatchClient({ matchId }: Props) {
               minWidth: sidePanelWidth,
             }}
           >
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-center text-slate-700">
+            <div
+              className={`rounded-xl border p-4 text-center ${
+                darkMode
+                  ? "border-[#3A444D] bg-[#2A3137] text-slate-100"
+                  : "border-slate-200 bg-slate-50 text-slate-700"
+              }`}
+            >
               <p
-                className="font-bold uppercase tracking-widest text-slate-500"
+                className={`font-bold uppercase tracking-widest ${darkMode ? "text-[#9AA4AE]" : "text-slate-500"}`}
                 style={{ fontSize: roleTitleFontSize }}
               >
                 YOUR ROLE
               </p>
             <div
-              className={`mx-auto mt-3 flex items-center justify-center rounded-full border-4 ${myRole === "ATTACK" ? "border-red-200 bg-red-50 text-red-600" : "border-blue-200 bg-blue-50 text-blue-600"}`}
+              className={`mx-auto mt-3 flex items-center justify-center rounded-full border-4 ${
+                myRole === "ATTACK"
+                  ? darkMode
+                    ? "border-red-400/40 bg-red-500/10 text-red-400"
+                    : "border-red-200 bg-red-50 text-red-600"
+                  : darkMode
+                    ? "border-blue-400/40 bg-blue-500/10 text-blue-400"
+                    : "border-blue-200 bg-blue-50 text-blue-600"
+              }`}
               style={{ width: roleOuterSize, height: roleOuterSize }}
             >
               <div style={{ width: roleIconSize, height: roleIconSize }}>
@@ -1772,12 +1802,18 @@ export function MatchClient({ matchId }: Props) {
               {myRole}
             </p>
                 </div>
-                <div className="rounded-xl border border-green-200 bg-green-50 p-3">
+                <div
+                  className={`rounded-xl border p-3 ${
+                    darkMode
+                      ? "border-emerald-900/40 bg-emerald-950/20"
+                      : "border-green-200 bg-green-50"
+                  }`}
+                >
                   <div className="mb-1 flex items-center justify-between">
-                    <span className="text-xs font-semibold text-[#386641]">
+                    <span className={`text-xs font-semibold ${darkMode ? "text-emerald-400/90" : "text-[#386641]"}`}>
                       Path Points
                     </span>
-                    <span className="text-xs font-bold text-[#386641]">
+                    <span className={`text-xs font-bold ${darkMode ? "text-emerald-400" : "text-[#386641]"}`}>
                       {remainingPathPoints} / {maxPoints}
                     </span>
                   </div>
@@ -1785,7 +1821,15 @@ export function MatchClient({ matchId }: Props) {
                     {pathGaugeSegments.map((filled, idx) => (
                       <div
                         key={`path-seg-${idx}`}
-                        className={`h-1.5 flex-1 rounded-full ${filled ? "bg-[#386641]" : "bg-[#b9c7bd]"}`}
+                        className={`h-1.5 flex-1 rounded-full ${
+                          filled
+                            ? darkMode
+                              ? "bg-emerald-500/70"
+                              : "bg-[#386641]"
+                            : darkMode
+                              ? "bg-slate-800"
+                              : "bg-[#b9c7bd]"
+                        }`}
                       />
                     ))}
                   </div>
@@ -1797,7 +1841,7 @@ export function MatchClient({ matchId }: Props) {
 
         <aside
           className={`flex h-[620px] flex-col overflow-hidden rounded-2xl border shadow-sm lg:col-span-4 ${
-            darkMode ? "border-slate-700 bg-[#2a2d2a]" : "border-slate-200/60 bg-white"
+            darkMode ? "border-[#3A444D] bg-[#1E252B]" : "border-slate-200/60 bg-white"
           }`}
         >
           <div
@@ -1812,7 +1856,7 @@ export function MatchClient({ matchId }: Props) {
           </div>
           <div
             ref={chatScrollRef}
-            className={`flex-1 overflow-y-auto p-3 ${darkMode ? "bg-[#242822]" : "bg-slate-50"}`}
+            className={`flex-1 overflow-y-auto p-3 ${darkMode ? "bg-[#2A3137]" : "bg-slate-50"}`}
           >
             {chatMessages.length === 0 ? (
               <div className={`py-12 text-center text-sm ${darkMode ? "text-slate-400" : "text-slate-500"}`}>
@@ -1840,8 +1884,8 @@ export function MatchClient({ matchId }: Props) {
             )}
           </div>
           <div
-            className={`border-t p-3 ${
-              darkMode ? "border-slate-700 bg-[#242822]" : "border-slate-100 bg-slate-50"
+              className={`border-t p-3 ${
+              darkMode ? "border-[#3A444D] bg-[#1E252B]" : "border-slate-100 bg-slate-50"
             }`}
           >
             <div className="flex gap-2">
@@ -1859,7 +1903,7 @@ export function MatchClient({ matchId }: Props) {
                 placeholder="Type a message..."
                 className={`flex-1 rounded-lg border px-3 py-2 text-sm outline-none focus:border-[#386641] ${
                   darkMode
-                    ? "border-slate-700 bg-[#1f231e] text-slate-100"
+                    ? "border-[#3A444D] bg-[#2A3137] text-slate-100"
                     : "border-slate-300 bg-white text-slate-800"
                 }`}
               />
