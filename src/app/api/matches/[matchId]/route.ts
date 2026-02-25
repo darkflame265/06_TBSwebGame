@@ -113,7 +113,7 @@ export async function GET(request: Request, context: Context) {
         obstacles: planningObstacles
       });
 
-      await sleep(80 + Math.floor(Math.random() * 121));
+      await sleep(10 + Math.floor(Math.random() * 31));
 
       const { error: botSubmitError } = await client.rpc("submit_bot_turn", {
         p_match_id: matchId,

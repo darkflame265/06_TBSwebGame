@@ -31,6 +31,8 @@ type ChatRealtimeRow = {
 const BOARD_SIZE = 5;
 const STEP_ANIMATION_MS = 320;
 const PREVIEW_PATH_MS = 250;
+const AI_STEP_ANIMATION_MS = 110;
+const AI_PREVIEW_PATH_MS = 0;
 const RED_PATH_STROKE = 8;
 const BLUE_PATH_STROKE = 5;
 const SUBMIT_BUFFER_MS = 3000;
@@ -347,7 +349,10 @@ export function MatchClient({ matchId }: Props) {
     meta: CollisionMeta,
     turn: number,
     revealResultOnImpact: boolean,
+    aiFastMode: boolean,
   ) => {
+    const stepMs = aiFastMode ? AI_STEP_ANIMATION_MS : STEP_ANIMATION_MS;
+    const previewMs = aiFastMode ? AI_PREVIEW_PATH_MS : PREVIEW_PATH_MS;
     const steps = Math.max(p1Path.length, p2Path.length);
     const immediateCollision =
       !!meta.collision && meta.hitSlot !== null && meta.collisionStep === null;
@@ -356,6 +361,10 @@ export function MatchClient({ matchId }: Props) {
     setFrozenTimerMs(Math.max(0, latestMillisLeftRef.current));
     animatingRef.current = true;
     setAnimating(true);
+    if (aiFastMode && ackedResolveTurnRef.current !== turn) {
+      ackedResolveTurnRef.current = turn;
+      void ackResolve(turn);
+    }
     let didTriggerHit = false;
 
     let p1 = start.p1;
@@ -393,7 +402,7 @@ export function MatchClient({ matchId }: Props) {
 
     // Ensure path overlay is painted on screen before movement begins.
     await waitForPaint();
-    await sleep(PREVIEW_PATH_MS);
+    if (previewMs > 0) await sleep(previewMs);
 
     for (let i = 0; i < steps; i += 1) {
       const prevP1 = p1;
@@ -423,7 +432,7 @@ export function MatchClient({ matchId }: Props) {
             collisionT = 1;
           }
         }
-        const delay = Math.round(STEP_ANIMATION_MS * clamp01(collisionT));
+        const delay = Math.round(stepMs * clamp01(collisionT));
         if (delay > 0) await sleep(delay);
         triggerImpactFx(meta);
         if (revealResultOnImpact) setResultReady(true);
@@ -442,9 +451,9 @@ export function MatchClient({ matchId }: Props) {
             return { ...hp, p2: next };
           });
         }
-        if (delay < STEP_ANIMATION_MS) await sleep(STEP_ANIMATION_MS - delay);
+        if (delay < stepMs) await sleep(stepMs - delay);
       } else {
-        await sleep(STEP_ANIMATION_MS);
+        await sleep(stepMs);
       }
     }
 
@@ -502,6 +511,7 @@ export function MatchClient({ matchId }: Props) {
           },
           data.resolved_paths.turn,
           data.status === "finished",
+          data.type === "ai",
         );
         animatedTurnRef.current = data.resolved_paths.turn;
       } else if (!animatingRef.current) {
@@ -683,7 +693,7 @@ export function MatchClient({ matchId }: Props) {
   }, []);
 
   useEffect(() => {
-    const pollMs = match?.type === "ai" ? 250 : 1000;
+    const pollMs = match?.type === "ai" ? 120 : 1000;
     const poll = setInterval(() => loadMatch(), pollMs);
     return () => clearInterval(poll);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1178,6 +1188,7 @@ export function MatchClient({ matchId }: Props) {
   const secondsLeft = ((isMovingUi ? 0 : shownMillisLeft) / 1000).toFixed(1);
   const timerBarBase =
     match.phase === "planning" ? PLANNING_UI_MS : PLANNING_TOTAL_MS;
+  const pieceTransitionMs = isAiMatch ? AI_STEP_ANIMATION_MS : STEP_ANIMATION_MS;
   const isFinished = match.status === "finished";
   const showResult = isFinished && resultReady;
   const iWon = isFinished && mySlot !== null && match.winner_slot === mySlot;
@@ -1731,7 +1742,7 @@ export function MatchClient({ matchId }: Props) {
                   style={{
                     left: p1Px.left,
                     top: p1Px.top,
-                    transition: `left ${STEP_ANIMATION_MS}ms linear, top ${STEP_ANIMATION_MS}ms linear`,
+                    transition: `left ${pieceTransitionMs}ms linear, top ${pieceTransitionMs}ms linear`,
                     boxShadow:
                       (mySlot === 1
                         ? "0 0 0 3px rgba(34,197,94,0.85), 0 0 12px 3px rgba(34,197,94,0.65)"
@@ -1747,7 +1758,7 @@ export function MatchClient({ matchId }: Props) {
                     style={{
                       left: p1Px.left,
                       top: p1Px.top,
-                      transition: `left ${STEP_ANIMATION_MS}ms linear, top ${STEP_ANIMATION_MS}ms linear`,
+                      transition: `left ${pieceTransitionMs}ms linear, top ${pieceTransitionMs}ms linear`,
                     }}
                   />
                 )}
@@ -1759,7 +1770,7 @@ export function MatchClient({ matchId }: Props) {
                   style={{
                     left: p2Px.left,
                     top: p2Px.top,
-                    transition: `left ${STEP_ANIMATION_MS}ms linear, top ${STEP_ANIMATION_MS}ms linear`,
+                    transition: `left ${pieceTransitionMs}ms linear, top ${pieceTransitionMs}ms linear`,
                     boxShadow:
                       (mySlot === 2
                         ? "0 0 0 3px rgba(34,197,94,0.85), 0 0 12px 3px rgba(34,197,94,0.65)"
@@ -1775,7 +1786,7 @@ export function MatchClient({ matchId }: Props) {
                     style={{
                       left: p2Px.left,
                       top: p2Px.top,
-                      transition: `left ${STEP_ANIMATION_MS}ms linear, top ${STEP_ANIMATION_MS}ms linear`,
+                      transition: `left ${pieceTransitionMs}ms linear, top ${pieceTransitionMs}ms linear`,
                     }}
                   />
                 )}
