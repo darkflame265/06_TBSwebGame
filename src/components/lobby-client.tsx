@@ -219,6 +219,10 @@ export function LobbyClient() {
     }
   };
 
+  const startAiMatch = () => {
+    setMessage("AI match is not wired yet. I can connect backend flow next.");
+  };
+
   const elapsedQueueSeconds =
     queueing && queueStartedAt ? Math.floor((queueNow - queueStartedAt) / 1000) : 0;
   const estimatedWaitLabel = (() => {
@@ -319,9 +323,41 @@ export function LobbyClient() {
               darkMode ? "border-slate-800 bg-[#242822]" : "border-slate-100 bg-white"
             }`}
           >
+            <div className="mb-6 flex items-start gap-4">
+              <span
+                className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold ${
+                  darkMode ? "bg-slate-700 text-emerald-400" : "bg-[#e8f1ed] text-[#3d6446]"
+                }`}
+              >
+                2
+              </span>
+              <div className="pt-1">
+                <h2 className="mb-4 text-2xl font-bold">Play vs AI</h2>
+                <p className={`text-sm ${darkMode ? "text-slate-400" : "text-slate-500"}`}>
+                  Practice against an AI opponent.
+                </p>
+                <p className={`text-sm ${darkMode ? "text-slate-500" : "text-slate-400"}`}>
+                  Good for warm-up or learning the game.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={startAiMatch}
+              className="w-full rounded-2xl bg-[#3d6446] px-6 py-5 text-xl font-bold tracking-wide text-white transition-colors duration-200 hover:bg-[#34563c]"
+            >
+              Start AI Match
+            </button>
+          </section>
+
+          <section
+            className={`rounded-3xl border p-8 shadow-sm transition ${
+              darkMode ? "border-slate-800 bg-[#242822]" : "border-slate-100 bg-white"
+            }`}
+          >
             <div className="mb-6 flex items-center gap-3">
               <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#386641]/10 text-sm font-bold text-[#386641]">
-                2
+                3
               </span>
               <h2 className="text-xl font-bold">Friend Match</h2>
             </div>
@@ -380,7 +416,7 @@ export function LobbyClient() {
           >
             <div className="mb-6 flex items-center gap-3">
               <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#386641]/10 text-sm font-bold text-[#386641]">
-                3
+                4
               </span>
               <h2 className="text-xl font-bold">Random Matchmaking</h2>
             </div>
