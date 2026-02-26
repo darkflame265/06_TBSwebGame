@@ -220,7 +220,6 @@ export function MatchClient({ matchId }: Props) {
   const [presenceReady, setPresenceReady] = useState(false);
   const [chatMessages, setChatMessages] = useState<LocalChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
-  const [sendingChat, setSendingChat] = useState(false);
   const [resultReady, setResultReady] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
 
@@ -696,12 +695,6 @@ export function MatchClient({ matchId }: Props) {
   }, [matchId, match?.type]);
 
   useEffect(() => {
-    const poll = setInterval(() => loadChat(), 500);
-    return () => clearInterval(poll);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [matchId]);
-
-  useEffect(() => {
     const stopDragging = () => setDraggingPath(false);
     window.addEventListener("pointerup", stopDragging);
     return () => window.removeEventListener("pointerup", stopDragging);
@@ -1144,7 +1137,6 @@ export function MatchClient({ matchId }: Props) {
       ),
     );
     setChatInput("");
-    setSendingChat(true);
 
     try {
       await apiPost(`/api/matches/${matchId}/chat`, { message: next });
@@ -1154,8 +1146,6 @@ export function MatchClient({ matchId }: Props) {
       setMessage(
         error instanceof Error ? error.message : "Failed to send chat",
       );
-    } finally {
-      setSendingChat(false);
     }
   };
 
