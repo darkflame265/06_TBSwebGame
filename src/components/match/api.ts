@@ -11,6 +11,13 @@ type RequestRematchResponse = {
   match_id?: string;
 };
 
+type AckResolveResponse = {
+  ok: boolean;
+  ticked?: boolean;
+  atomic?: boolean;
+  snapshot?: MatchLiveResponse;
+};
+
 export async function fetchMatch(
   matchId: string,
   options?: { live?: boolean },
@@ -21,7 +28,7 @@ export async function fetchMatch(
 }
 
 export async function ackMatchResolve(matchId: string, turn: number) {
-  return apiPost(`/api/matches/${matchId}/resolve-ack`, { turn });
+  return apiPost<AckResolveResponse>(`/api/matches/${matchId}/resolve-ack`, { turn });
 }
 
 export async function tickMatch(matchId: string) {

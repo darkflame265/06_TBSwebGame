@@ -62,7 +62,9 @@ export async function POST(request: Request, context: Context) {
   addTiming("ack_resolve_atomic_rpc", atomicStart);
 
   if (!atomicError && atomicData) {
-    return withTiming(NextResponse.json({ ok: true, ticked: true, atomic: true }));
+    return withTiming(
+      NextResponse.json({ ok: true, ticked: true, atomic: true, snapshot: atomicData }),
+    );
   }
 
   // Fallback when migration is not yet applied.

@@ -231,8 +231,12 @@ export function MatchClient({ matchId }: Props) {
 
   const ackResolve = async (turn: number) => {
     try {
-      await ackMatchResolve(matchId, turn);
-      // Secondary nudge: if phase transition is pending, request a fresh authoritative tick once.
+      const res = await ackMatchResolve(matchId, turn);
+      if (res.snapshot) {
+        await applyMatchData(res.snapshot);
+        return;
+      }
+      // Fallback path when atomic snapshot is unavailable.
       void tickMatch();
     } catch {
       // best effort; timeout fallback on server still guarantees progress
