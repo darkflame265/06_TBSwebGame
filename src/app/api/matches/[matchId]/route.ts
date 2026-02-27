@@ -28,19 +28,26 @@ type MatchRow = {
 async function buildMatchResponse(
   matchData: MatchRow,
   matchId: string,
-  client: SupabaseClient
+  client: SupabaseClient,
+  options?: { turnScope?: "all" | "current" }
 ): Promise<NextResponse> {
+  const currentTurn =
+    typeof matchData.current_turn === "number" ? matchData.current_turn : null;
+  let turnsQuery = client
+    .from("turns")
+    .select("id,turn_number,player_slot,action_payload,created_by,created_at")
+    .eq("match_id", matchId);
+  if (options?.turnScope === "current" && currentTurn !== null) {
+    turnsQuery = turnsQuery.eq("turn_number", currentTurn);
+  }
+
   const [playersResult, turnsResult] = await Promise.all([
     client
       .from("match_players")
       .select("user_id,slot,joined_at")
       .eq("match_id", matchId)
       .order("slot", { ascending: true }),
-    client
-      .from("turns")
-      .select("id,turn_number,player_slot,action_payload,created_by,created_at")
-      .eq("match_id", matchId)
-      .order("turn_number", { ascending: true })
+    turnsQuery.order("turn_number", { ascending: true })
   ]);
 
   if (playersResult.error) {
@@ -117,6 +124,8 @@ export async function POST(request: Request, context: Context) {
     return jsonError("Invalid match id", 400);
   }
   const { matchId } = parsedParams.data;
+  const view = new URL(request.url).searchParams.get("view");
+  const turnScope = view === "live" ? "current" : "all";
 
   const { error: tickError } = await client.rpc("tick_match_round", {
     p_match_id: matchId
@@ -233,7 +242,7 @@ export async function POST(request: Request, context: Context) {
     }
   }
 
-  return buildMatchResponse(matchData, matchId, client);
+  return buildMatchResponse(matchData, matchId, client, { turnScope });
 }
 
 export async function GET(request: Request, context: Context) {
@@ -248,6 +257,8 @@ export async function GET(request: Request, context: Context) {
     return jsonError("Invalid match id", 400);
   }
   const { matchId } = parsedParams.data;
+  const view = new URL(request.url).searchParams.get("view");
+  const turnScope = view === "live" ? "current" : "all";
 
   const { data: matchData, error: matchError } = await client
     .from("matches")
@@ -264,6 +275,6 @@ export async function GET(request: Request, context: Context) {
     return jsonError("Match not found", 404);
   }
 
-  return buildMatchResponse(matchData, matchId, client);
+  return buildMatchResponse(matchData, matchId, client, { turnScope });
 }
 

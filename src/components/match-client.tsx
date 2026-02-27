@@ -354,6 +354,97 @@ export function MatchClient({ matchId }: Props) {
     }
   };
 
+  const applyMatchData = async (data: MatchResponse) => {
+    const nextBoard = data.board_state ?? DEFAULT_BOARD;
+    const prev = prevMatchRef.current;
+
+    if (data.status !== "finished" && resultReady) {
+      setResultReady(false);
+    }
+
+    if (!prev) {
+      setDisplayBoard(nextBoard);
+      setDisplayHp({ p1: data.p1_hp, p2: data.p2_hp });
+      setExplodedSlot(null);
+    } else if (
+      data.phase === "resolving" &&
+      data.resolved_paths &&
+      animatedTurnRef.current !== data.resolved_paths.turn &&
+      !animatingRef.current
+    ) {
+      const start = data.resolved_paths.start;
+      const collisionAt =
+        data.resolved_paths.collision_at ??
+        deriveCollisionAt(
+          { p1: start.p1, p2: start.p2 },
+          data.resolved_paths.p1,
+          data.resolved_paths.p2,
+        );
+      await animateResolvedRound(
+        { p1: start.p1, p2: start.p2 },
+        data.resolved_paths.p1,
+        data.resolved_paths.p2,
+        {
+          collision: !!data.resolved_paths.collision,
+          hitSlot: data.resolved_paths.hit_slot ?? null,
+          collisionAt,
+          collisionStep: data.resolved_paths.collision_step ?? null,
+          collisionT: data.resolved_paths.collision_t ?? null,
+        },
+        data.resolved_paths.turn,
+        data.status === "finished",
+        data.type === "ai",
+      );
+      animatedTurnRef.current = data.resolved_paths.turn;
+    } else if (!animatingRef.current) {
+      setDisplayBoard(nextBoard);
+      setDisplayHp({ p1: data.p1_hp, p2: data.p2_hp });
+    }
+
+    const hasPendingResolveAnimation =
+      data.phase === "resolving" &&
+      !!data.resolved_paths &&
+      animatedTurnRef.current !== data.resolved_paths.turn;
+
+    if (
+      data.status === "finished" &&
+      !hasPendingResolveAnimation &&
+      !animatingRef.current
+    ) {
+      setResultReady(true);
+    }
+
+    if (prev && prev.phase === "resolving" && data.phase === "planning") {
+      if (!animatingRef.current) {
+        setResolvedOverlay(null);
+      }
+      setPlannedPath([]);
+      plannedPathRef.current = [];
+      lockedPathRef.current = null;
+      setPlanningLocked(false);
+      setDraggingPath(false);
+      autoSubmittedRoundRef.current = null;
+      ackedResolveTurnRef.current = null;
+    }
+    if (prev && data.current_turn !== prev.current_turn) {
+      if (!animatingRef.current) {
+        setResolvedOverlay(null);
+      }
+      setPlannedPath([]);
+      plannedPathRef.current = [];
+      lockedPathRef.current = null;
+      setPlanningLocked(false);
+      setDraggingPath(false);
+      autoSubmittedRoundRef.current = null;
+      ackedResolveTurnRef.current = null;
+      setExplodedSlot(null);
+    }
+
+    prevMatchRef.current = data;
+    matchRef.current = data;
+    setMatch(data);
+  };
+
   const loadMatch = async () => {
     if (loadMatchPromiseRef.current) {
       loadMatchQueuedRef.current = true;
@@ -364,94 +455,7 @@ export function MatchClient({ matchId }: Props) {
     const task = (async () => {
     try {
       const data = await fetchMatch(matchId);
-      const nextBoard = data.board_state ?? DEFAULT_BOARD;
-      const prev = prevMatchRef.current;
-
-      if (data.status !== "finished" && resultReady) {
-        setResultReady(false);
-      }
-
-      if (!prev) {
-        setDisplayBoard(nextBoard);
-        setDisplayHp({ p1: data.p1_hp, p2: data.p2_hp });
-        setExplodedSlot(null);
-      } else if (
-        data.phase === "resolving" &&
-        data.resolved_paths &&
-        animatedTurnRef.current !== data.resolved_paths.turn &&
-        !animatingRef.current
-      ) {
-        const start = data.resolved_paths.start;
-        const collisionAt =
-          data.resolved_paths.collision_at ??
-          deriveCollisionAt(
-            { p1: start.p1, p2: start.p2 },
-            data.resolved_paths.p1,
-            data.resolved_paths.p2,
-          );
-        await animateResolvedRound(
-          { p1: start.p1, p2: start.p2 },
-          data.resolved_paths.p1,
-          data.resolved_paths.p2,
-          {
-            collision: !!data.resolved_paths.collision,
-            hitSlot: data.resolved_paths.hit_slot ?? null,
-            collisionAt,
-            collisionStep: data.resolved_paths.collision_step ?? null,
-            collisionT: data.resolved_paths.collision_t ?? null,
-          },
-          data.resolved_paths.turn,
-          data.status === "finished",
-          data.type === "ai",
-        );
-        animatedTurnRef.current = data.resolved_paths.turn;
-      } else if (!animatingRef.current) {
-        setDisplayBoard(nextBoard);
-        setDisplayHp({ p1: data.p1_hp, p2: data.p2_hp });
-      }
-
-      const hasPendingResolveAnimation =
-        data.phase === "resolving" &&
-        !!data.resolved_paths &&
-        animatedTurnRef.current !== data.resolved_paths.turn;
-
-      if (
-        data.status === "finished" &&
-        !hasPendingResolveAnimation &&
-        !animatingRef.current
-      ) {
-        setResultReady(true);
-      }
-
-      if (prev && prev.phase === "resolving" && data.phase === "planning") {
-        if (!animatingRef.current) {
-          setResolvedOverlay(null);
-        }
-        setPlannedPath([]);
-        plannedPathRef.current = [];
-        lockedPathRef.current = null;
-        setPlanningLocked(false);
-        setDraggingPath(false);
-        autoSubmittedRoundRef.current = null;
-        ackedResolveTurnRef.current = null;
-      }
-      if (prev && data.current_turn !== prev.current_turn) {
-        if (!animatingRef.current) {
-          setResolvedOverlay(null);
-        }
-        setPlannedPath([]);
-        plannedPathRef.current = [];
-        lockedPathRef.current = null;
-        setPlanningLocked(false);
-        setDraggingPath(false);
-        autoSubmittedRoundRef.current = null;
-        ackedResolveTurnRef.current = null;
-        setExplodedSlot(null);
-      }
-
-      prevMatchRef.current = data;
-      matchRef.current = data;
-      setMatch(data);
+      await applyMatchData(data);
     } catch (error) {
       setMessage(
         error instanceof Error ? error.message : "Failed to load match",
@@ -473,9 +477,10 @@ export function MatchClient({ matchId }: Props) {
 
   const tickMatch = async () => {
     try {
-      await tickMatchApi(matchId);
+      const data = await tickMatchApi(matchId);
+      await applyMatchData(data);
     } catch {
-      // tick is best-effort; loadMatch fallback poll still keeps state fresh
+      // tick is best-effort; realtime/read refresh keeps state fresh
     }
   };
 
@@ -599,10 +604,7 @@ export function MatchClient({ matchId }: Props) {
     // Trigger exactly around phase deadline instead of polling.
     const delayMs = Math.max(0, deadlineMs - Date.now() + 25);
     const timer = window.setTimeout(() => {
-      void (async () => {
-        await tickMatch();
-        await loadMatch();
-      })();
+      void tickMatch();
     }, delayMs);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -636,6 +638,53 @@ export function MatchClient({ matchId }: Props) {
   }, []);
 
   useEffect(() => {
+    let scheduledRefresh: ReturnType<typeof setTimeout> | null = null;
+    const scheduleLoadMatch = () => {
+      if (scheduledRefresh) clearTimeout(scheduledRefresh);
+      scheduledRefresh = setTimeout(() => {
+        scheduledRefresh = null;
+        void loadMatch();
+      }, 150);
+    };
+
+    type TurnRow = {
+      id: number;
+      turn_number: number;
+      player_slot: number;
+      action_payload: Record<string, unknown>;
+      created_by: string;
+      created_at: string;
+    };
+
+    const patchTurnRow = (row: TurnRow) => {
+      const current = matchRef.current;
+      if (!current) return;
+      const without = current.turns.filter((t) => t.id !== row.id);
+      const turns = [...without, row].sort((a, b) => {
+        if (a.turn_number !== b.turn_number) return a.turn_number - b.turn_number;
+        return a.player_slot - b.player_slot;
+      });
+      const next: MatchResponse = { ...current, turns };
+      matchRef.current = next;
+      prevMatchRef.current = next;
+      setMatch(next);
+    };
+
+    const patchMatchRow = (row: Partial<MatchResponse>) => {
+      const current = matchRef.current;
+      if (!current) {
+        scheduleLoadMatch();
+        return;
+      }
+      const next: MatchResponse = {
+        ...current,
+        ...row,
+        players: current.players,
+        turns: current.turns,
+      };
+      void applyMatchData(next);
+    };
+
     const channel = supabase
       .channel(`match-stream-${matchId}`)
       .on(
@@ -646,7 +695,29 @@ export function MatchClient({ matchId }: Props) {
           table: "turns",
           filter: `match_id=eq.${matchId}`,
         },
-        () => { void tickMatch(); void loadMatch(); },
+        (payload) => {
+          const row = payload.new as Partial<TurnRow>;
+          if (
+            typeof row.id !== "number" ||
+            typeof row.turn_number !== "number" ||
+            typeof row.player_slot !== "number" ||
+            typeof row.created_by !== "string" ||
+            typeof row.created_at !== "string" ||
+            typeof row.action_payload !== "object" ||
+            row.action_payload === null
+          ) {
+            scheduleLoadMatch();
+            return;
+          }
+          patchTurnRow({
+            id: row.id,
+            turn_number: row.turn_number,
+            player_slot: row.player_slot,
+            action_payload: row.action_payload as Record<string, unknown>,
+            created_by: row.created_by,
+            created_at: row.created_at,
+          });
+        },
       )
       .on(
         "postgres_changes",
@@ -656,7 +727,29 @@ export function MatchClient({ matchId }: Props) {
           table: "turns",
           filter: `match_id=eq.${matchId}`,
         },
-        () => loadMatch(),
+        (payload) => {
+          const row = payload.new as Partial<TurnRow>;
+          if (
+            typeof row.id !== "number" ||
+            typeof row.turn_number !== "number" ||
+            typeof row.player_slot !== "number" ||
+            typeof row.created_by !== "string" ||
+            typeof row.created_at !== "string" ||
+            typeof row.action_payload !== "object" ||
+            row.action_payload === null
+          ) {
+            scheduleLoadMatch();
+            return;
+          }
+          patchTurnRow({
+            id: row.id,
+            turn_number: row.turn_number,
+            player_slot: row.player_slot,
+            action_payload: row.action_payload as Record<string, unknown>,
+            created_by: row.created_by,
+            created_at: row.created_at,
+          });
+        },
       )
       .on(
         "postgres_changes",
@@ -666,7 +759,19 @@ export function MatchClient({ matchId }: Props) {
           table: "matches",
           filter: `id=eq.${matchId}`,
         },
-        () => loadMatch(),
+        (payload) => {
+          const row = payload.new as Partial<MatchResponse>;
+          if (
+            typeof row.id !== "string" ||
+            typeof row.phase !== "string" ||
+            typeof row.current_turn !== "number" ||
+            typeof row.status !== "string"
+          ) {
+            scheduleLoadMatch();
+            return;
+          }
+          patchMatchRow(row);
+        },
       )
       .on(
         "postgres_changes",
@@ -700,6 +805,7 @@ export function MatchClient({ matchId }: Props) {
       .subscribe();
 
     return () => {
+      if (scheduledRefresh) clearTimeout(scheduledRefresh);
       supabase.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

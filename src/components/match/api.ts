@@ -12,7 +12,7 @@ type RequestRematchResponse = {
 };
 
 export async function fetchMatch(matchId: string) {
-  return apiGet<MatchResponse>(`/api/matches/${matchId}`);
+  return apiGet<MatchResponse>(`/api/matches/${matchId}?view=live`);
 }
 
 export async function ackMatchResolve(matchId: string, turn: number) {
@@ -20,7 +20,7 @@ export async function ackMatchResolve(matchId: string, turn: number) {
 }
 
 export async function tickMatch(matchId: string) {
-  return apiPost(`/api/matches/${matchId}/tick`);
+  return apiPost<MatchResponse>(`/api/matches/${matchId}?view=live`);
 }
 
 export async function fetchMatchChat(matchId: string) {
