@@ -25,6 +25,7 @@ export async function POST(request: Request, context: Context) {
   const withTiming = (response: NextResponse) => {
     if (timings.length > 0) {
       response.headers.set("Server-Timing", timings.join(", "));
+      response.headers.set("X-Debug-Timing", timings.join(" | "));
     }
     return response;
   };
@@ -172,4 +173,5 @@ export async function POST(request: Request, context: Context) {
 
   return withTiming(NextResponse.json({ ok: true }));
 }
+
 
