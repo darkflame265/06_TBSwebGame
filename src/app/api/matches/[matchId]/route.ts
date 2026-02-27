@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getAuthedUser, jsonError } from "@/lib/api";
-import { createAdminSupabase } from "@/lib/supabase/server";
+import { createAdminSupabase, createUserSupabaseFromRequest } from "@/lib/supabase/server";
 import { generateObstacles, seedForMatchRound, type Coord } from "@/lib/obstacles";
 import { generatePathForRole } from "@/lib/ai-planner";
 
@@ -14,6 +14,94 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 type Context = {
   params: Promise<{ matchId: string }>;
 };
+
+type SupabaseClient = NonNullable<ReturnType<typeof createUserSupabaseFromRequest>>;
+
+type MatchRow = {
+  type: string;
+  created_at: string | null;
+  [key: string]: unknown;
+};
+
+async function buildMatchResponse(
+  matchData: MatchRow,
+  matchId: string,
+  client: SupabaseClient
+): Promise<NextResponse> {
+  const [playersResult, turnsResult] = await Promise.all([
+    client
+      .from("match_players")
+      .select("user_id,slot,joined_at")
+      .eq("match_id", matchId)
+      .order("slot", { ascending: true }),
+    client
+      .from("turns")
+      .select("id,turn_number,player_slot,action_payload,created_by,created_at")
+      .eq("match_id", matchId)
+      .order("turn_number", { ascending: true })
+  ]);
+
+  if (playersResult.error) {
+    return jsonError(playersResult.error.message, 400);
+  }
+  if (turnsResult.error) {
+    return jsonError(turnsResult.error.message, 400);
+  }
+
+  const playerRows = playersResult.data ?? [];
+  const normalizedPlayers =
+    matchData.type === "ai" && !playerRows.some((p) => p.slot === 2)
+      ? [...playerRows, { user_id: AI_USER_ID, slot: 2, joined_at: matchData.created_at }]
+      : playerRows;
+  const playerIds = normalizedPlayers.map((p) => p.user_id).filter((id) => id !== AI_USER_ID);
+  const nicknameMap = new Map<string, string | null>();
+  const statsMap = new Map<string, { wins: number; losses: number; win_rate: number }>();
+
+  if (playerIds.length > 0) {
+    const { data: profileRows, error: profilesError } = await client
+      .from("user_profiles")
+      .select("user_id,nickname")
+      .in("user_id", playerIds);
+
+    if (profilesError) {
+      return jsonError(profilesError.message, 400);
+    }
+
+    for (const profile of profileRows ?? []) {
+      nicknameMap.set(profile.user_id, profile.nickname ?? null);
+    }
+
+    const { data: statRows, error: statsError } = await client.rpc(
+      "get_user_match_stats",
+      { p_user_ids: playerIds }
+    );
+
+    if (statsError) {
+      return jsonError(statsError.message, 400);
+    }
+
+    for (const row of statRows ?? []) {
+      const userId = row.user_id as string;
+      statsMap.set(userId, {
+        wins: Number(row.wins ?? 0),
+        losses: Number(row.losses ?? 0),
+        win_rate: Number(row.win_rate ?? 0)
+      });
+    }
+  }
+
+  return NextResponse.json({
+    ...matchData,
+    players: normalizedPlayers.map((player) => ({
+      ...player,
+      nickname: player.user_id === AI_USER_ID ? "AI Bot" : (nicknameMap.get(player.user_id) ?? null),
+      wins: player.user_id === AI_USER_ID ? 0 : (statsMap.get(player.user_id)?.wins ?? 0),
+      losses: player.user_id === AI_USER_ID ? 0 : (statsMap.get(player.user_id)?.losses ?? 0),
+      win_rate: player.user_id === AI_USER_ID ? 0 : (statsMap.get(player.user_id)?.win_rate ?? 0)
+    })),
+    turns: turnsResult.data ?? []
+  });
+}
 
 export async function POST(request: Request, context: Context) {
   const { error, client } = await getAuthedUser(request);
@@ -143,79 +231,7 @@ export async function POST(request: Request, context: Context) {
     }
   }
 
-  const [playersResult, turnsResult] = await Promise.all([
-    client
-      .from("match_players")
-      .select("user_id,slot,joined_at")
-      .eq("match_id", matchId)
-      .order("slot", { ascending: true }),
-    client
-      .from("turns")
-      .select("id,turn_number,player_slot,action_payload,created_by,created_at")
-      .eq("match_id", matchId)
-      .order("turn_number", { ascending: true })
-  ]);
-
-  if (playersResult.error) {
-    return jsonError(playersResult.error.message, 400);
-  }
-  if (turnsResult.error) {
-    return jsonError(turnsResult.error.message, 400);
-  }
-
-  const playerRows = playersResult.data ?? [];
-  const normalizedPlayers =
-    matchData.type === "ai" && !playerRows.some((p) => p.slot === 2)
-      ? [...playerRows, { user_id: AI_USER_ID, slot: 2, joined_at: matchData.created_at }]
-      : playerRows;
-  const playerIds = normalizedPlayers.map((p) => p.user_id).filter((id) => id !== AI_USER_ID);
-  const nicknameMap = new Map<string, string | null>();
-  const statsMap = new Map<string, { wins: number; losses: number; win_rate: number }>();
-
-  if (playerIds.length > 0) {
-    const { data: profileRows, error: profilesError } = await client
-      .from("user_profiles")
-      .select("user_id,nickname")
-      .in("user_id", playerIds);
-
-    if (profilesError) {
-      return jsonError(profilesError.message, 400);
-    }
-
-    for (const profile of profileRows ?? []) {
-      nicknameMap.set(profile.user_id, profile.nickname ?? null);
-    }
-
-    const { data: statRows, error: statsError } = await client.rpc(
-      "get_user_match_stats",
-      { p_user_ids: playerIds }
-    );
-
-    if (statsError) {
-      return jsonError(statsError.message, 400);
-    }
-
-    for (const row of statRows ?? []) {
-      const userId = row.user_id as string;
-      statsMap.set(userId, {
-        wins: Number(row.wins ?? 0),
-        losses: Number(row.losses ?? 0),
-        win_rate: Number(row.win_rate ?? 0)
-      });
-    }
-  }
-
-  return NextResponse.json({
-    ...matchData,
-    players: normalizedPlayers.map((player) => ({
-      ...player,
-      nickname: player.user_id === AI_USER_ID ? "AI Bot" : (nicknameMap.get(player.user_id) ?? null),
-      wins: player.user_id === AI_USER_ID ? 0 : (statsMap.get(player.user_id)?.wins ?? 0),
-      losses: player.user_id === AI_USER_ID ? 0 : (statsMap.get(player.user_id)?.losses ?? 0),
-      win_rate: player.user_id === AI_USER_ID ? 0 : (statsMap.get(player.user_id)?.win_rate ?? 0)
-    })),
-    turns: turnsResult.data ?? []
-  });
+  return buildMatchResponse(matchData, matchId, client);
 }
 
 export async function GET(request: Request, context: Context) {
@@ -246,74 +262,5 @@ export async function GET(request: Request, context: Context) {
     return jsonError("Match not found", 404);
   }
 
-  const [playersResult, turnsResult] = await Promise.all([
-    client
-      .from("match_players")
-      .select("user_id,slot,joined_at")
-      .eq("match_id", matchId)
-      .order("slot", { ascending: true }),
-    client
-      .from("turns")
-      .select("id,turn_number,player_slot,action_payload,created_by,created_at")
-      .eq("match_id", matchId)
-      .order("turn_number", { ascending: true }),
-  ]);
-
-  if (playersResult.error) {
-    return jsonError(playersResult.error.message, 400);
-  }
-  if (turnsResult.error) {
-    return jsonError(turnsResult.error.message, 400);
-  }
-
-  const playerRows = playersResult.data ?? [];
-  const normalizedPlayers =
-    matchData.type === "ai" && !playerRows.some((p) => p.slot === 2)
-      ? [...playerRows, { user_id: AI_USER_ID, slot: 2, joined_at: matchData.created_at }]
-      : playerRows;
-  const playerIds = normalizedPlayers.map((p) => p.user_id).filter((id) => id !== AI_USER_ID);
-  const nicknameMap = new Map<string, string | null>();
-  const statsMap = new Map<string, { wins: number; losses: number; win_rate: number }>();
-
-  if (playerIds.length > 0) {
-    const { data: profileRows, error: profilesError } = await client
-      .from("user_profiles")
-      .select("user_id,nickname")
-      .in("user_id", playerIds);
-
-    if (profilesError) {
-      return jsonError(profilesError.message, 400);
-    }
-    for (const profile of profileRows ?? []) {
-      nicknameMap.set(profile.user_id, profile.nickname ?? null);
-    }
-
-    const { data: statRows, error: statsError } = await client.rpc(
-      "get_user_match_stats",
-      { p_user_ids: playerIds }
-    );
-    if (statsError) {
-      return jsonError(statsError.message, 400);
-    }
-    for (const row of statRows ?? []) {
-      const userId = row.user_id as string;
-      statsMap.set(userId, {
-        wins: Number(row.wins ?? 0),
-        losses: Number(row.losses ?? 0),
-        win_rate: Number(row.win_rate ?? 0),
-      });
-    }
-  }
-
-  return NextResponse.json({
-    ...matchData,
-    players: normalizedPlayers.map((player) => ({
-      ...player,
-      nickname: player.user_id === AI_USER_ID ? "AI Bot" : (nicknameMap.get(player.user_id) ?? null),
-      wins: player.user_id === AI_USER_ID ? 0 : (statsMap.get(player.user_id)?.wins ?? 0),
-      losses: player.user_id === AI_USER_ID ? 0 : (statsMap.get(player.user_id)?.losses ?? 0),
-      win_rate: player.user_id === AI_USER_ID ? 0 : (statsMap.get(player.user_id)?.win_rate ?? 0),
-    })),
-    turns: turnsResult.data ?? [],
-  });
+  return buildMatchResponse(matchData, matchId, client);
 }
