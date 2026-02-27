@@ -75,7 +75,11 @@ begin
     end if;
 
     -- Same seed idea as app seedForMatchRound(matchId, turn)
-    v_seed := abs(hashtextextended(p_match_id::text || ':' || v_match.current_turn::text, 0));
+    -- Avoid bigint overflow on abs(INT64_MIN).
+    v_seed := hashtextextended(
+      p_match_id::text || ':' || v_match.current_turn::text,
+      0
+    ) & 2147483647::bigint;
     v_a := 1103515245;
     v_c := 12345;
 
@@ -169,4 +173,3 @@ revoke execute on function public.tick_match_live_snapshot(uuid, text) from publ
 grant execute on function public.tick_match_live_snapshot(uuid, text) to authenticated;
 
 commit;
-

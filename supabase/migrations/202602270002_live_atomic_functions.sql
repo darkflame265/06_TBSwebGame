@@ -76,7 +76,11 @@ begin
     v_runner_col := v_p1_col;
   end if;
 
-  v_seed := abs(hashtextextended(p_match_id::text || ':' || v_match.current_turn::text, 0));
+  -- Avoid bigint overflow on abs(INT64_MIN).
+  v_seed := hashtextextended(
+    p_match_id::text || ':' || v_match.current_turn::text,
+    0
+  ) & 2147483647::bigint;
 
   for v_pick_row in 0..4 loop
     for v_pick_col in 0..4 loop
