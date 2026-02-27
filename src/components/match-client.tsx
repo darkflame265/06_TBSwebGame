@@ -3,182 +3,69 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getBrowserSupabaseClient } from "@/lib/supabase/browser";
-import { apiGet, apiPost } from "@/lib/client-api";
-import type { MatchChatMessage, MatchResponse } from "@/types/api";
+import type { MatchResponse } from "@/types/api";
+import {
+  AI_PREVIEW_PATH_MS,
+  AI_STEP_ANIMATION_MS,
+  BOARD_SIZE,
+  BOARD_CLUSTER_GAP,
+  CELL_GAP,
+  CHAT_KEEP_MISSING_REALTIME_MS,
+  CHAT_MATCH_WINDOW_MS,
+  DEFAULT_BOARD,
+  MAX_CELL_SIZE,
+  MAX_CELL_SIZE_BELOW,
+  MAX_CELL_SIZE_NARROW,
+  MIN_CELL_SIZE,
+  PLANNING_TOTAL_MS,
+  PLANNING_UI_MS,
+  PREVIEW_PATH_MS,
+  STEP_ANIMATION_MS,
+  SUBMIT_BUFFER_MS,
+} from "@/components/match/constants";
+import { MatchBoardSection } from "@/components/match/match-board-section";
+import { MatchChatPanel } from "@/components/match/match-chat-panel";
+import { MatchGlobalStyles } from "@/components/match/match-global-styles";
+import { MatchHeader } from "@/components/match/match-header";
+import { MatchResultPanel } from "@/components/match/match-result-panel";
+import {
+  ackMatchResolve,
+  createAiMatch,
+  fetchMatch,
+  fetchMatchChat,
+  leaveMatch as leaveMatchApi,
+  requestMatchRematch,
+  sendMatchChat as sendMatchChatApi,
+  submitMatchPath,
+  tickMatch as tickMatchApi,
+} from "@/components/match/api";
+import { useMatchPreferences } from "@/components/match/hooks/use-match-preferences";
+import type {
+  ChatRealtimeRow,
+  CollisionMeta,
+  Coord,
+  DisplayBoard,
+  LocalChatMessage,
+} from "@/components/match/types";
+import {
+  buildRenderablePathPoints,
+  clamp01,
+  coordToPx,
+  deriveCollisionAt,
+  isLikelySameChat,
+  isOrthogonalStep,
+  isTypingTarget,
+  parsePath,
+  pathEquals,
+  progressOnSegment,
+  sameCoord,
+  sleep,
+  toMs,
+  waitForPaint,
+} from "@/components/match/utils";
 
 type Props = {
   matchId: string;
-};
-
-type Coord = [number, number];
-type DisplayBoard = { p1: Coord; p2: Coord };
-type CollisionMeta = {
-  collision: boolean;
-  hitSlot: 1 | 2 | null;
-  collisionAt: Coord | null;
-  collisionStep: number | null;
-  collisionT: number | null;
-};
-type LocalChatMessage = MatchChatMessage & { optimistic?: boolean };
-type ChatRealtimeRow = {
-  id: number;
-  match_id: string;
-  user_id: string;
-  message: string;
-  created_at: string;
-};
-
-const BOARD_SIZE = 5;
-const STEP_ANIMATION_MS = 320;
-const PREVIEW_PATH_MS = 250;
-const AI_STEP_ANIMATION_MS = 320;
-const AI_PREVIEW_PATH_MS = 0;
-const RED_PATH_STROKE = 8;
-const BLUE_PATH_STROKE = 5;
-const SUBMIT_BUFFER_MS = 3000;
-const PLANNING_TOTAL_MS = 10000;
-const PLANNING_UI_MS = PLANNING_TOTAL_MS - SUBMIT_BUFFER_MS;
-const MAX_CELL_SIZE = 86;
-const MIN_CELL_SIZE = 24;
-const MAX_CELL_SIZE_BELOW = 72;
-const MAX_CELL_SIZE_NARROW = 68;
-const CELL_GAP = 8;
-const DEFAULT_BOARD: DisplayBoard = { p1: [0, 2], p2: [4, 2] };
-const BOARD_CLUSTER_GAP = 32;
-const CHAT_MATCH_WINDOW_MS = 15000;
-const CHAT_KEEP_MISSING_REALTIME_MS = 5000;
-
-const sameCoord = (a: Coord, b: Coord) => a[0] === b[0] && a[1] === b[1];
-const isOrthogonalStep = (from: Coord, to: Coord) =>
-  Math.abs(from[0] - to[0]) + Math.abs(from[1] - to[1]) === 1;
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-const waitForPaint = () =>
-  new Promise<void>((resolve) => {
-    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-  });
-const coordToPx = ([row, col]: Coord, cellSize: number, gap: number) => ({
-  left: col * (cellSize + gap) + cellSize / 2,
-  top: row * (cellSize + gap) + cellSize / 2,
-});
-const heartsForHp = (hp: number) => [0, 1, 2].map((i) => i < hp);
-const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
-const pathEquals = (a: Coord[], b: Coord[]) =>
-  a.length === b.length && a.every((coord, idx) => sameCoord(coord, b[idx]));
-const parsePath = (value: unknown): Coord[] => {
-  if (!Array.isArray(value)) return [];
-  const out: Coord[] = [];
-  for (const item of value) {
-    if (!Array.isArray(item) || item.length !== 2) return out;
-    const row = item[0];
-    const col = item[1];
-    if (typeof row !== "number" || typeof col !== "number") return out;
-    out.push([row, col]);
-  }
-  return out;
-};
-const toMs = (iso: string) => {
-  const v = Date.parse(iso);
-  return Number.isNaN(v) ? 0 : v;
-};
-const isLikelySameChat = (
-  a: Pick<MatchChatMessage, "user_id" | "message" | "created_at">,
-  b: Pick<MatchChatMessage, "user_id" | "message" | "created_at">,
-) =>
-  a.user_id === b.user_id &&
-  a.message === b.message &&
-  Math.abs(toMs(a.created_at) - toMs(b.created_at)) <= CHAT_MATCH_WINDOW_MS;
-const isTypingTarget = (target: EventTarget | null) => {
-  if (!(target instanceof HTMLElement)) return false;
-  const tag = target.tagName.toLowerCase();
-  return (
-    tag === "input" ||
-    tag === "textarea" ||
-    tag === "select" ||
-    target.isContentEditable
-  );
-};
-const buildRenderablePathPoints = (start: Coord, path: Coord[]) => {
-  if (path.length === 0) return [start];
-  // Defensive rendering guard:
-  // if start and first point are momentarily inconsistent, skip the bad first segment
-  // so a diagonal "snap" line is never drawn.
-  if (!isOrthogonalStep(start, path[0])) return [...path];
-  return [start, ...path];
-};
-
-const SwordIcon = () => (
-  <svg viewBox="0 0 64 64" className="h-full w-full" aria-hidden>
-    <g
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M50 10L28 32" />
-      <path d="M54 6L46 14" />
-      <path d="M28 32L20 40" />
-      <path d="M20 40L12 34L6 40L12 46L6 52L12 58L18 52L24 58L30 52L24 46L30 40L24 34L20 40" />
-    </g>
-  </svg>
-);
-
-const RunIcon = () => (
-  <svg viewBox="0 0 64 64" className="h-full w-full" aria-hidden>
-    <g
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <circle cx="42" cy="10" r="5" />
-      <path d="M36 20L28 30L40 34L34 46" />
-      <path d="M28 30L18 24" />
-      <path d="M24 44L14 54" />
-      <path d="M40 34L50 42" />
-      <path d="M6 58H58" />
-    </g>
-  </svg>
-);
-
-const deriveCollisionAt = (
-  start: DisplayBoard,
-  p1Path: Coord[],
-  p2Path: Coord[],
-): Coord | null => {
-  const steps = Math.max(p1Path.length, p2Path.length);
-  let p1 = start.p1;
-  let p2 = start.p2;
-  for (let i = 0; i < steps; i += 1) {
-    if (i < p1Path.length) p1 = p1Path[i];
-    if (i < p2Path.length) p2 = p2Path[i];
-    if (sameCoord(p1, p2)) return p1;
-  }
-  return null;
-};
-const progressOnSegment = (
-  from: Coord,
-  to: Coord,
-  point: Coord,
-): number | null => {
-  const eps = 0.0001;
-  if (sameCoord(from, to)) return null;
-  if (Math.abs(from[0] - to[0]) < eps) {
-    if (Math.abs(point[0] - from[0]) > eps) return null;
-    const den = to[1] - from[1];
-    if (Math.abs(den) < eps) return null;
-    const t = (point[1] - from[1]) / den;
-    return t >= -eps && t <= 1 + eps ? clamp01(t) : null;
-  }
-  if (Math.abs(from[1] - to[1]) < eps) {
-    if (Math.abs(point[1] - from[1]) > eps) return null;
-    const den = to[0] - from[0];
-    if (Math.abs(den) < eps) return null;
-    const t = (point[0] - from[0]) / den;
-    return t >= -eps && t <= 1 + eps ? clamp01(t) : null;
-  }
-  return null;
 };
 
 export function MatchClient({ matchId }: Props) {
@@ -201,7 +88,7 @@ export function MatchClient({ matchId }: Props) {
     p1: Coord[];
     p2: Coord[];
   } | null>(null);
-  const [muted, setMuted] = useState(false);
+  const { muted, setMuted, darkMode } = useMatchPreferences();
   const [impactCoord, setImpactCoord] = useState<Coord | null>(null);
   const [hitFlashSlot, setHitFlashSlot] = useState<1 | 2 | null>(null);
   const [shakingHeart, setShakingHeart] = useState<{
@@ -221,7 +108,6 @@ export function MatchClient({ matchId }: Props) {
   const [chatMessages, setChatMessages] = useState<LocalChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [resultReady, setResultReady] = useState(false);
-  const [darkMode, setDarkMode] = useState(false);
 
   const prevMatchRef = useRef<MatchResponse | null>(null);
   const animatingRef = useRef(false);
@@ -336,7 +222,7 @@ export function MatchClient({ matchId }: Props) {
 
   const ackResolve = async (turn: number) => {
     try {
-      await apiPost(`/api/matches/${matchId}/resolve-ack`, { turn });
+      await ackMatchResolve(matchId, turn);
     } catch {
       // best effort; timeout fallback on server still guarantees progress
     }
@@ -468,7 +354,7 @@ export function MatchClient({ matchId }: Props) {
 
   const loadMatch = async () => {
     try {
-      const data = await apiGet<MatchResponse>(`/api/matches/${matchId}`);
+      const data = await fetchMatch(matchId);
       const nextBoard = data.board_state ?? DEFAULT_BOARD;
       const prev = prevMatchRef.current;
 
@@ -566,7 +452,7 @@ export function MatchClient({ matchId }: Props) {
 
   const tickMatch = async () => {
     try {
-      await apiPost(`/api/matches/${matchId}/tick`);
+      await tickMatchApi(matchId);
     } catch {
       // tick is best-effort; loadMatch fallback poll still keeps state fresh
     }
@@ -604,9 +490,7 @@ export function MatchClient({ matchId }: Props) {
 
   const loadChat = async () => {
     try {
-      const data = await apiGet<MatchChatMessage[]>(
-        `/api/matches/${matchId}/chat`,
-      );
+      const data = await fetchMatchChat(matchId);
       setChatMessages((prev) => {
         const now = Date.now();
         const merged: LocalChatMessage[] = [...data];
@@ -650,26 +534,11 @@ export function MatchClient({ matchId }: Props) {
   };
 
   useEffect(() => {
-    const saved = localStorage.getItem("tbs-muted");
-    if (saved) setMuted(saved === "1");
-    const savedDark = localStorage.getItem("tbs-dark");
-    if (savedDark) setDarkMode(savedDark === "1");
     supabase.auth.getUser().then(({ data }) => setMe(data.user?.id ?? null));
     loadMatch();
     loadChat();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchId]);
-
-  useEffect(() => {
-    localStorage.setItem("tbs-muted", muted ? "1" : "0");
-  }, [muted]);
-
-  useEffect(() => {
-    localStorage.setItem("tbs-dark", darkMode ? "1" : "0");
-    if (typeof document !== "undefined") {
-      document.documentElement.classList.toggle("dark", darkMode);
-    }
-  }, [darkMode]);
 
   useEffect(() => {
     if (!shakingHeart) return;
@@ -880,10 +749,7 @@ export function MatchClient({ matchId }: Props) {
     if (submitInFlightRef.current) return;
     submitInFlightRef.current = true;
     try {
-      await apiPost(`/api/matches/${matchId}/turns`, {
-        round: match.current_turn,
-        action: { path: pathToSubmit },
-      });
+      await submitMatchPath(matchId, match.current_turn, pathToSubmit);
       await loadMatch();
     } catch (error) {
       const msg =
@@ -1058,15 +924,12 @@ export function MatchClient({ matchId }: Props) {
     setRequestingRematch(true);
     try {
       if (match.type === "ai") {
-        const data = await apiPost<{ match_id: string }>("/api/ai-match/create");
+        const data = await createAiMatch();
         router.push(`/match/${data.match_id}`);
         return;
       }
 
-      const res = await apiPost<{
-        status: "waiting" | "started";
-        match_id?: string;
-      }>(`/api/matches/${matchId}/rematch`);
+      const res = await requestMatchRematch(matchId);
       if (res.status === "started" && res.match_id) {
         router.push(`/match/${res.match_id}`);
         return;
@@ -1125,7 +988,7 @@ export function MatchClient({ matchId }: Props) {
     setMessage(null);
     setLeaving(true);
     try {
-      await apiPost(`/api/matches/${matchId}/leave`);
+      await leaveMatchApi(matchId);
       router.push("/");
     } catch (error) {
       setLeaving(false);
@@ -1166,7 +1029,7 @@ export function MatchClient({ matchId }: Props) {
     setChatInput("");
 
     try {
-      await apiPost(`/api/matches/${matchId}/chat`, { message: next });
+      await sendMatchChatApi(matchId, next);
       void loadChat();
     } catch (error) {
       setChatMessages((prev) => prev.filter((msg) => msg.id !== optimisticId));
@@ -1360,767 +1223,125 @@ export function MatchClient({ matchId }: Props) {
     p2Player &&
     `${p2Player.wins}W ${p2Player.losses}L · ${p2Player.win_rate}%`;
   const pathGaugeSegments = Array.from({ length: maxPoints }).map(
-    (_, idx) => idx < remainingPathPoints,
-  );
+  (_, idx) => idx < remainingPathPoints,
+);
 
-  return (
-    <main
-      className={`min-h-screen ${darkMode ? "bg-[#12181B] text-slate-100" : "bg-[#F2E8CF] text-slate-800"}`}
-    >
-      <header className="mx-auto max-w-7xl px-6 pb-2 pt-8">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1
-              className={`flex items-center gap-2 text-3xl font-bold tracking-tight ${darkMode ? "text-slate-100" : "text-slate-900"}`}
-            >
-              <span className="text-[#ef4444]">🎮</span>
-              Match{" "}
-              <span
-                className={`rounded-md px-2 py-1 font-mono text-sm font-medium ${
-                  darkMode
-                    ? "bg-[#1E252B] text-[#9AA4AE]"
-                    : "bg-slate-200 text-slate-600"
-                }`}
-              >
-                {match.id}
-              </span>
-            </h1>
-            <div
-              className={`mt-2 flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] ${
-                darkMode ? "text-[#9AA4AE]" : "text-slate-600"
-              }`}
-            >
-              <span>
-                Status:{" "}
-                <span
-                  className={`${
-                    match.status === "active"
-                      ? "text-emerald-500"
-                      : match.status === "finished"
-                        ? "text-rose-500"
-                        : darkMode
-                          ? "text-slate-200"
-                          : "text-slate-800"
-                  }`}
-                >
-                  {match.status}
-                </span>
-              </span>
-              <span className="opacity-50">|</span>
-              <span>
-                Phase:{" "}
-                <span className={match.phase === "planning" ? "text-amber-400" : "text-blue-400"}>
-                  {match.phase}
-                </span>
-              </span>
-              <span className="opacity-50">|</span>
-              <span>Round: {match.current_turn}</span>
-              <span className="opacity-50">|</span>
-              <span>
-                Piece:{" "}
-                <span className={myColor === "Red" ? "text-red-500" : "text-blue-400"}>
-                  {myColor}
-                </span>
-              </span>
-              <span className="opacity-50">|</span>
-              <span>Role: {myRole}</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setMuted((v) => !v)}
-              className={`rounded-lg border px-3 py-2 text-sm shadow-sm ${
-                darkMode
-                  ? "border-[#3A444D] bg-[#1E252B] text-slate-100"
-                  : "border-slate-200 bg-white text-slate-700"
-              }`}
-            >
-              {muted ? "SFX Off" : "SFX On"}
-            </button>
-            <button
-              onClick={leaveMatch}
-              disabled={leaving}
-              className="rounded-lg bg-[#bc4749] px-4 py-2 text-white shadow-sm disabled:cursor-not-allowed disabled:bg-slate-400"
-            >
-              {leaving
-                ? "Leaving..."
-                : match.status === "finished"
-                  ? "Back to lobby"
-                  : "Leave match"}
-            </button>
-          </div>
-        </div>
-        <div
-          className={`rounded-xl border p-4 shadow-sm ${
-            darkMode ? "border-[#3A444D] bg-[#1E252B]" : "border-slate-200/70 bg-white"
-          }`}
-        >
-          <div
-            className={`mb-2 flex items-center justify-between text-xs font-bold uppercase tracking-wider ${
-              darkMode ? "text-slate-300" : "text-slate-500"
-            }`}
-          >
-            <span>{match.phase} phase</span>
-            <div className="flex items-center gap-3">
-              {match.phase === "planning" && !obstaclesReadyForTurn && (
-                <span
-                  className={`text-[11px] font-semibold normal-case ${
-                    darkMode ? "text-amber-400" : "text-amber-700"
-                  }`}
-                >
-                  Preparing obstacle layout...
-                </span>
-              )}
-              <span className="text-[#386641]">
-                {isMovingUi ? "moving..." : `timer: ${secondsLeft}s`}
-              </span>
-            </div>
-          </div>
-          <div className={`h-1.5 w-full overflow-hidden rounded ${darkMode ? "bg-[#2A3137]" : "bg-slate-200"}`}>
-            <div
-              className="h-full bg-[#386641]"
-              style={{
-                width: `${Math.max(0, Math.min(100, ((isMovingUi ? 0 : shownMillisLeft) / timerBarBase) * 100))}%`,
-              }}
-            />
-          </div>
-        </div>
-      </header>
+return (
+  <main
+    className={`min-h-screen ${darkMode ? "bg-[#12181B] text-slate-100" : "bg-[#F2E8CF] text-slate-800"}`}
+  >
+    <MatchHeader
+      darkMode={darkMode}
+      matchId={match.id}
+      status={match.status}
+      phase={match.phase}
+      currentTurn={match.current_turn}
+      myColor={myColor}
+      myRole={myRole}
+      muted={muted}
+      leaving={leaving}
+      obstaclesReadyForTurn={obstaclesReadyForTurn}
+      isMovingUi={isMovingUi}
+      secondsLeft={secondsLeft}
+      shownMillisLeft={shownMillisLeft}
+      timerBarBase={timerBarBase}
+      onToggleMuted={() => setMuted((v) => !v)}
+      onLeaveMatch={() => void leaveMatch()}
+      isFinished={isFinished}
+    />
 
-      {showResult && (
-        <div
-          className={`mx-auto mt-3 max-w-7xl rounded-xl p-4 text-center text-2xl font-extrabold ${iWon ? "bg-emerald-100 text-emerald-700" : iLost ? "bg-rose-100 text-rose-700" : "bg-slate-100 text-slate-700"}`}
-        >
-          {iWon ? "YOU WIN" : iLost ? "YOU LOSE" : "MATCH FINISHED"}
-        </div>
-      )}
+    <MatchResultPanel
+      darkMode={darkMode}
+      showResult={showResult}
+      iWon={iWon}
+      iLost={iLost}
+      matchType={match.type}
+      requestingRematch={requestingRematch}
+      myRematchRequested={myRematchRequested}
+      opponentRematchRequested={opponentRematchRequested}
+      rematchMatchId={match.rematch_match_id}
+      presenceReady={presenceReady}
+      opponentOnline={opponentOnline}
+      opponentLeft={opponentLeft}
+      onRequestRematch={() => void requestRematch()}
+    />
 
-      {showResult && (
-        <div
-          className={`mx-auto mt-3 max-w-7xl rounded-xl p-4 shadow-sm ${
-            darkMode ? "bg-[#1E252B]" : "bg-white"
-          }`}
-        >
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <button
-              type="button"
-              onClick={requestRematch}
-              disabled={
-                match.type === "ai"
-                  ? requestingRematch
-                  : requestingRematch ||
-                    myRematchRequested ||
-                    !!match.rematch_match_id ||
-                    (presenceReady && !opponentOnline)
-              }
-              className="rounded-lg bg-indigo-700 px-4 py-2 text-white disabled:cursor-not-allowed disabled:bg-slate-400"
-            >
-              {match.type === "ai"
-                ? requestingRematch
-                  ? "Starting..."
-                  : "REMATCH"
-                : match.rematch_match_id
-                  ? "Starting rematch..."
-                  : myRematchRequested
-                    ? "Rematch requested"
-                    : requestingRematch
-                      ? "Requesting..."
-                      : "REMATCH"}
-            </button>
-            {match.type === "ai" && (
-              <p
-                className={`ml-auto text-sm ${darkMode ? "text-slate-300" : "text-slate-600"}`}
-              >
-                AI match finished.
-              </p>
-            )}
-            {opponentRematchRequested &&
-              !myRematchRequested &&
-              !match.rematch_match_id &&
-              !opponentLeft && (
-                <p className="text-sm font-semibold text-indigo-700">
-                  The opponent has requested a rematch.
-                </p>
-              )}
-            {myRematchRequested &&
-              !opponentRematchRequested &&
-              !match.rematch_match_id &&
-              !opponentLeft && (
-                <p className={`text-sm ${darkMode ? "text-slate-300" : "text-slate-600"}`}>
-                  Rematch request sent. Waiting for opponent...
-                </p>
-              )}
-            {opponentLeft && (
-              <p className="text-sm font-semibold text-rose-700">
-                The opponent has left the game.
-              </p>
-            )}
-          </div>
-        </div>
-      )}
-
-      <main className="mx-auto mt-4 grid max-w-7xl grid-cols-1 gap-8 px-6 pb-10 lg:grid-cols-12">
-        <section
-          className={`rounded-2xl border p-6 shadow-sm lg:col-span-8 ${
-            darkMode ? "border-[#3A444D] bg-[#1E252B]" : "border-slate-200/60 bg-white"
-          }`}
-        >
-          <div className="mb-8 flex items-center justify-between">
-            <h2 className="text-xl font-bold">Board 5x5</h2>
-            <div className="flex items-center gap-6">
-              <div className="flex items-center gap-3">
-                <div className="text-right">
-                  <p
-                    className="max-w-[140px] truncate text-[10px] font-bold uppercase text-red-600"
-                    title={p1Name}
-                  >
-                    {p1Name}
-                  </p>
-                  <div className="mt-0.5 flex justify-end gap-0.5">
-                    {heartsForHp(displayHp.p1).map((filled, idx) => (
-                      <span
-                        key={`p1-heart-header-${idx}-${shakingHeart?.nonce ?? 0}`}
-                        className={`text-lg text-rose-500 ${filled ? "opacity-100" : "opacity-25"} ${
-                          shakingHeart?.slot === 1 && shakingHeart.index === idx
-                            ? "heart-shake"
-                            : ""
-                        }`}
-                      >
-                        {"\u2665"}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setOpenProfileSlot((prev) => (prev === 1 ? null : 1))
-                    }
-                    className="relative flex h-10 w-10 items-center justify-center rounded-full border-2 border-red-500 bg-red-50 text-red-500"
-                    title={p1Name}
-                  >
-                    <span>◎</span>
-                  </button>
-                  {openProfileSlot === 1 && (
-                    <div
-                      className={`absolute -bottom-[90px] left-1/2 z-20 w-[320px] -translate-x-1/2 rounded border p-3 text-xs shadow ${
-                        darkMode
-                          ? "border-[#3A444D] bg-[#2A3137] text-slate-200"
-                          : "border-slate-200 bg-white text-slate-700"
-                      }`}
-                    >
-                      <p className="select-text font-semibold">
-                        {p1Name}
-                        {p1Record ? ` (${p1Record})` : ""}
-                      </p>
-                      <p className="mt-1 select-text break-all font-mono text-[11px]">
-                        Guest: {p1UserId}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="h-8 w-px bg-slate-200" />
-              <div className="flex items-center gap-3">
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setOpenProfileSlot((prev) => (prev === 2 ? null : 2))
-                    }
-                    className="relative flex h-10 w-10 items-center justify-center rounded-full border-2 border-blue-500 bg-blue-50 text-blue-500"
-                    title={p2Name}
-                  >
-                    <span>◎</span>
-                  </button>
-                  {openProfileSlot === 2 && (
-                    <div
-                      className={`absolute -bottom-[90px] left-1/2 z-20 w-[320px] -translate-x-1/2 rounded border p-3 text-xs shadow ${
-                        darkMode
-                          ? "border-[#3A444D] bg-[#2A3137] text-slate-200"
-                          : "border-slate-200 bg-white text-slate-700"
-                      }`}
-                    >
-                      <p className="select-text font-semibold">
-                        {p2Name}
-                        {p2Record ? ` (${p2Record})` : ""}
-                      </p>
-                      <p className="mt-1 select-text break-all font-mono text-[11px]">
-                        Guest: {p2UserId}
-                      </p>
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <p
-                    className="max-w-[140px] truncate text-[10px] font-bold uppercase text-blue-500"
-                    title={p2Name}
-                  >
-                    {p2Name}
-                  </p>
-                  {showAiThinking && (
-                    <p className="text-[10px] font-semibold text-emerald-600">
-                      AI is thinking...
-                    </p>
-                  )}
-                  <div className="mt-0.5 flex gap-0.5">
-                    {heartsForHp(displayHp.p2).map((filled, idx) => (
-                      <span
-                        key={`p2-heart-header-${idx}-${shakingHeart?.nonce ?? 0}`}
-                        className={`text-lg text-rose-500 ${filled ? "opacity-100" : "opacity-25"} ${
-                          shakingHeart?.slot === 2 && shakingHeart.index === idx
-                            ? "heart-shake"
-                            : ""
-                        }`}
-                      >
-                        {"\u2665"}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div ref={boardClusterHostRef} className="mt-5 w-full">
-            <div
-              className="flex items-start gap-4"
-              style={{ gap: clusterGap }}
-            >
-          <div
-            className="relative flex-none"
-            style={{ width: boardPx, height: boardPx, touchAction: "none" }}
-          >
-                <div
-                  className="grid"
-                  style={{
-                    width: boardPx,
-                    height: boardPx,
-                    gridTemplateColumns: `repeat(${BOARD_SIZE}, minmax(0, 1fr))`,
-                    gap: `${CELL_GAP}px`,
-                  }}
-                >
-                  {Array.from({ length: BOARD_SIZE }).map((_, row) =>
-                    Array.from({ length: BOARD_SIZE }).map((__, col) =>
-                      (() => {
-                        const isObstacle = obstacleKeys.has(`${row},${col}`);
-                        return (
-                          <button
-                            key={`${row}-${col}`}
-                            type="button"
-                            onPointerDown={(e) => {
-                              e.preventDefault();
-                              beginPathDrag(row, col);
-                            }}
-                            onPointerEnter={() => extendOrRewindPath(row, col)}
-                            onPointerUp={() => setDraggingPath(false)}
-                            onClick={() => tapPathStep(row, col)}
-                            className={`relative rounded-lg border text-[10px] ${
-                              isObstacle
-                                ? darkMode
-                                  ? "cursor-not-allowed border-[#3A444D] bg-slate-900/80 text-slate-300"
-                                  : "cursor-not-allowed border-slate-700 bg-slate-800 text-slate-300"
-                                : darkMode
-                                  ? `border-[#3A444D] bg-[#2A3137] text-[#9AA4AE] ${canPlan ? "hover:bg-[#333C44]" : "cursor-default"}`
-                                  : `border-slate-200 bg-slate-50 text-slate-500 ${canPlan ? "hover:bg-slate-100" : "cursor-default"}`
-                            }`}
-                            style={{
-                              width: boardCellSize,
-                              height: boardCellSize,
-                              touchAction: "none",
-                              userSelect: "none",
-                            }}
-                          >
-                            ({row},{col})
-                          </button>
-                        );
-                      })(),
-                    ),
-                  )}
-                </div>
-
-                <svg
-                  className="pointer-events-none absolute inset-0"
-                  width={boardPx}
-                  height={boardPx}
-                  viewBox={`0 0 ${boardPx} ${boardPx}`}
-                >
-                  {match.phase === "planning" &&
-                    planningLine.split(" ").length >= 2 && (
-                      <polyline
-                        points={planningLine}
-                        fill="none"
-                        stroke={mySlot === 1 ? "#dc2626" : "#2563eb"}
-                        strokeWidth={
-                          mySlot === 1 ? RED_PATH_STROKE : BLUE_PATH_STROKE
-                        }
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        opacity="0.75"
-                      />
-                    )}
-                  {showResolvedPaths &&
-                    resolvingP1Line.split(" ").length >= 2 && (
-                      <polyline
-                        points={resolvingP1Line}
-                        fill="none"
-                        stroke="#dc2626"
-                        strokeWidth={RED_PATH_STROKE}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        opacity="0.75"
-                      />
-                    )}
-                  {showResolvedPaths &&
-                    resolvingP2Line.split(" ").length >= 2 && (
-                      <polyline
-                        points={resolvingP2Line}
-                        fill="none"
-                        stroke="#2563eb"
-                        strokeWidth={BLUE_PATH_STROKE}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        opacity="0.85"
-                      />
-                    )}
-                </svg>
-
-                {impactPx && (
-                  <div
-                    className="pointer-events-none absolute impact-burst -translate-x-1/2 -translate-y-1/2"
-                    style={{ left: impactPx.left, top: impactPx.top }}
-                  />
-                )}
-
-                <div
-                  className={`pointer-events-none absolute h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-red-500 ${
-                    hitFlashSlot === 1 ? "hit-blink" : ""
-                  } ${explodedSlot === 1 ? "piece-explode" : ""}`}
-                  style={{
-                    left: p1Px.left,
-                    top: p1Px.top,
-                    transition: `left ${pieceTransitionMs}ms linear, top ${pieceTransitionMs}ms linear`,
-                    boxShadow:
-                      (mySlot === 1
-                        ? "0 0 0 3px rgba(34,197,94,0.85), 0 0 12px 3px rgba(34,197,94,0.65)"
-                        : "0 2px 6px rgba(15,23,42,0.25)") +
-                      (p1IsAttacker
-                        ? ", 0 0 14px 5px rgba(249,115,22,0.65)"
-                        : ""),
-                  }}
-                />
-                {p1IsAttacker && (
-                  <div
-                    className="pointer-events-none absolute flame-aura -translate-x-1/2 -translate-y-1/2"
-                    style={{
-                      left: p1Px.left,
-                      top: p1Px.top,
-                      transition: `left ${pieceTransitionMs}ms linear, top ${pieceTransitionMs}ms linear`,
-                    }}
-                  />
-                )}
-
-                <div
-                  className={`pointer-events-none absolute h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-500 ${
-                    hitFlashSlot === 2 ? "hit-blink" : ""
-                  } ${explodedSlot === 2 ? "piece-explode" : ""}`}
-                  style={{
-                    left: p2Px.left,
-                    top: p2Px.top,
-                    transition: `left ${pieceTransitionMs}ms linear, top ${pieceTransitionMs}ms linear`,
-                    boxShadow:
-                      (mySlot === 2
-                        ? "0 0 0 3px rgba(34,197,94,0.85), 0 0 12px 3px rgba(34,197,94,0.65)"
-                        : "0 2px 6px rgba(15,23,42,0.25)") +
-                      (p2IsAttacker
-                        ? ", 0 0 14px 5px rgba(249,115,22,0.65)"
-                        : ""),
-                  }}
-                />
-                {p2IsAttacker && (
-                  <div
-                    className="pointer-events-none absolute flame-aura -translate-x-1/2 -translate-y-1/2"
-                    style={{
-                      left: p2Px.left,
-                      top: p2Px.top,
-                      transition: `left ${pieceTransitionMs}ms linear, top ${pieceTransitionMs}ms linear`,
-                    }}
-                  />
-                )}
-              </div>
-          <div
-            className="space-y-4 flex-none"
-            style={{
-              width: sidePanelWidth,
-              minWidth: sidePanelWidth,
-            }}
-          >
-            <div
-              className={`rounded-xl border p-4 text-center ${
-                darkMode
-                  ? "border-[#3A444D] bg-[#2A3137] text-slate-100"
-                  : "border-slate-200 bg-slate-50 text-slate-700"
-              }`}
-            >
-              <p
-                className={`font-bold uppercase tracking-widest ${darkMode ? "text-[#9AA4AE]" : "text-slate-500"}`}
-                style={{ fontSize: roleTitleFontSize }}
-              >
-                YOUR ROLE
-              </p>
-            <div
-              className={`mx-auto mt-3 flex items-center justify-center rounded-full border-4 ${
-                myRole === "ATTACK"
-                  ? darkMode
-                    ? "border-red-400/40 bg-red-500/10 text-red-400"
-                    : "border-red-200 bg-red-50 text-red-600"
-                  : darkMode
-                    ? "border-blue-400/40 bg-blue-500/10 text-blue-400"
-                    : "border-blue-200 bg-blue-50 text-blue-600"
-              }`}
-              style={{ width: roleOuterSize, height: roleOuterSize }}
-            >
-              <div style={{ width: roleIconSize, height: roleIconSize }}>
-                {myRole === "ATTACK" ? <SwordIcon /> : <RunIcon />}
-              </div>
-            </div>
-            <p
-              className={`mt-2 font-bold ${myRole === "ATTACK" ? "text-red-600" : "text-blue-600"}`}
-              style={{ fontSize: roleLabelFontSize }}
-            >
-              {myRole}
-            </p>
-                </div>
-                <div
-                  className={`rounded-xl border p-3 ${
-                    darkMode
-                      ? "border-emerald-900/40 bg-emerald-950/20"
-                      : "border-green-200 bg-green-50"
-                  }`}
-                >
-                  <div className="mb-1 flex items-center justify-between">
-                    <span className={`text-xs font-semibold ${darkMode ? "text-emerald-400/90" : "text-[#386641]"}`}>
-                      Path Points
-                    </span>
-                    <span className={`text-xs font-bold ${darkMode ? "text-emerald-400" : "text-[#386641]"}`}>
-                      {remainingPathPoints} / {maxPoints}
-                    </span>
-                  </div>
-                  <div className="flex gap-1">
-                    {pathGaugeSegments.map((filled, idx) => (
-                      <div
-                        key={`path-seg-${idx}`}
-                        className={`h-1.5 flex-1 rounded-full ${
-                          filled
-                            ? darkMode
-                              ? "bg-emerald-500/70"
-                              : "bg-[#386641]"
-                            : darkMode
-                              ? "bg-slate-800"
-                              : "bg-[#b9c7bd]"
-                        }`}
-                      />
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <aside
-          className={`flex h-[620px] flex-col overflow-hidden rounded-2xl border shadow-sm lg:col-span-4 ${
-            darkMode ? "border-[#3A444D] bg-[#1E252B]" : "border-slate-200/60 bg-white"
-          }`}
-        >
-          <div
-            className={`flex items-center justify-between border-b p-4 ${
-              darkMode ? "border-slate-700" : "border-slate-100"
-            }`}
-          >
-            <h2 className="font-semibold text-lg">Match Chat</h2>
-            <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold uppercase text-green-700">
-              Live
-            </span>
-          </div>
-          <div
-            ref={chatScrollRef}
-            className={`flex-1 overflow-y-auto p-3 ${darkMode ? "bg-[#2A3137]" : "bg-slate-50"}`}
-          >
-            {chatMessages.length === 0 ? (
-              <div className={`py-12 text-center text-sm ${darkMode ? "text-slate-400" : "text-slate-500"}`}>
-                No messages yet. Say hi to your opponent!
-              </div>
-            ) : (
-              <ul className="space-y-1">
-                {chatMessages.map((msg) => {
-                  const displayName =
-                    msg.nickname?.trim() || msg.user_id.slice(0, 8);
-                  return (
-                    <li
-                      key={msg.id}
-                      className={`break-words text-sm ${darkMode ? "text-slate-200" : "text-slate-700"}`}
-                    >
-                      <span className={`font-semibold ${darkMode ? "text-slate-100" : "text-slate-900"}`}>
-                        {displayName}
-                      </span>
-                      {" : "}
-                      <span>{msg.message}</span>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
-          <div
-              className={`border-t p-3 ${
-              darkMode ? "border-[#3A444D] bg-[#1E252B]" : "border-slate-100 bg-slate-50"
-            }`}
-          >
-            <div className="flex gap-2">
-              <input
-                ref={chatInputRef}
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    void sendChat();
-                  }
-                }}
-                maxLength={300}
-                placeholder="Type a message..."
-                className={`flex-1 rounded-lg border px-3 py-2 text-sm outline-none focus:border-[#386641] ${
-                  darkMode
-                    ? "border-[#3A444D] bg-[#2A3137] text-slate-100"
-                    : "border-slate-300 bg-white text-slate-800"
-                }`}
-              />
-              <button
-                type="button"
-                onClick={() => void sendChat()}
-                disabled={chatInput.trim().length === 0}
-                className="rounded-lg bg-[#386641] px-3 py-2 text-sm text-white disabled:cursor-not-allowed disabled:bg-slate-400"
-              >
-                ➤
-              </button>
-            </div>
-          </div>
-        </aside>
-      </main>
-
-      {message && (
-        <p className="mx-auto mt-4 max-w-7xl rounded-lg bg-red-100 p-3 text-sm text-red-700">
-          {message}
-        </p>
-      )}
-
-      <footer
-        className={`mx-auto max-w-7xl px-6 pb-12 pt-6 text-center text-sm ${
-          darkMode ? "text-slate-500" : "text-slate-400"
-        }`}
-      >
-        <p>© 2024 TBS Arena</p>
-      </footer>
-
-      <style jsx global>{`
-        .hit-blink {
-          animation: hit-blink 0.18s steps(2, end) 4;
-        }
-        .impact-burst {
-          width: 18px;
-          height: 18px;
-          border-radius: 9999px;
-          border: 3px solid rgba(251, 146, 60, 0.95);
-          box-shadow: 0 0 18px rgba(251, 146, 60, 0.9);
-          animation: impact-burst 0.42s ease-out forwards;
-        }
-        .heart-shake {
-          animation: heart-shake 0.45s ease-in-out;
-        }
-        .flame-aura {
-          width: 22px;
-          height: 22px;
-          border-radius: 9999px;
-          background: radial-gradient(
-            circle at 50% 65%,
-            rgba(251, 146, 60, 0.9),
-            rgba(251, 146, 60, 0.35) 55%,
-            rgba(251, 146, 60, 0) 75%
-          );
-          filter: blur(0.4px);
-          animation: flame-flicker 0.28s ease-in-out infinite alternate;
-        }
-        .piece-explode {
-          animation: piece-explode 0.45s ease-out forwards;
-        }
-        @keyframes hit-blink {
-          0% {
-            opacity: 1;
-          }
-          50% {
-            opacity: 0.2;
-          }
-          100% {
-            opacity: 1;
-          }
-        }
-        @keyframes impact-burst {
-          0% {
-            transform: translate(-50%, -50%) scale(0.4);
-            opacity: 1;
-          }
-          100% {
-            transform: translate(-50%, -50%) scale(2.1);
-            opacity: 0;
-          }
-        }
-        @keyframes heart-shake {
-          0% {
-            transform: translateX(0);
-          }
-          20% {
-            transform: translateX(-2px);
-          }
-          40% {
-            transform: translateX(2px);
-          }
-          60% {
-            transform: translateX(-2px);
-          }
-          80% {
-            transform: translateX(2px);
-          }
-          100% {
-            transform: translateX(0);
-          }
-        }
-        @keyframes flame-flicker {
-          0% {
-            transform: translate(-50%, -50%) scale(1);
-            opacity: 0.8;
-          }
-          100% {
-            transform: translate(-50%, -50%) scale(1.12);
-            opacity: 1;
-          }
-        }
-        @keyframes piece-explode {
-          0% {
-            transform: translate(-50%, -50%) scale(1);
-            opacity: 1;
-          }
-          70% {
-            transform: translate(-50%, -50%) scale(1.8);
-            opacity: 0.9;
-          }
-          100% {
-            transform: translate(-50%, -50%) scale(2.1);
-            opacity: 0;
-          }
-        }
-      `}</style>
+    <main className="mx-auto mt-4 grid max-w-7xl grid-cols-1 gap-8 px-6 pb-10 lg:grid-cols-12">
+      <MatchBoardSection
+        darkMode={darkMode}
+        boardClusterHostRef={boardClusterHostRef}
+        clusterGap={clusterGap}
+        boardPx={boardPx}
+        boardCellSize={boardCellSize}
+        obstacleKeys={obstacleKeys}
+        canPlan={canPlan}
+        beginPathDrag={beginPathDrag}
+        extendOrRewindPath={extendOrRewindPath}
+        tapPathStep={tapPathStep}
+        setDraggingPath={setDraggingPath}
+        matchPhase={match.phase}
+        planningLine={planningLine}
+        mySlot={mySlot}
+        showResolvedPaths={showResolvedPaths}
+        resolvingP1Line={resolvingP1Line}
+        resolvingP2Line={resolvingP2Line}
+        impactPx={impactPx}
+        hitFlashSlot={hitFlashSlot}
+        explodedSlot={explodedSlot}
+        p1Px={p1Px}
+        p2Px={p2Px}
+        pieceTransitionMs={pieceTransitionMs}
+        p1IsAttacker={p1IsAttacker}
+        p2IsAttacker={p2IsAttacker}
+        roleTitleFontSize={roleTitleFontSize}
+        roleOuterSize={roleOuterSize}
+        roleIconSize={roleIconSize}
+        myRole={myRole}
+        roleLabelFontSize={roleLabelFontSize}
+        remainingPathPoints={remainingPathPoints}
+        maxPoints={maxPoints}
+        pathGaugeSegments={pathGaugeSegments}
+        sidePanelWidth={sidePanelWidth}
+        p1Name={p1Name}
+        p2Name={p2Name}
+        p1Record={p1Record}
+        p2Record={p2Record}
+        p1UserId={p1UserId}
+        p2UserId={p2UserId}
+        openProfileSlot={openProfileSlot}
+        setOpenProfileSlot={setOpenProfileSlot}
+        displayHp={displayHp}
+        shakingHeart={shakingHeart}
+        showAiThinking={showAiThinking}
+      />
+      <MatchChatPanel
+        darkMode={darkMode}
+        chatScrollRef={chatScrollRef}
+        chatInputRef={chatInputRef}
+        chatMessages={chatMessages}
+        chatInput={chatInput}
+        onChangeChatInput={setChatInput}
+        onSendChat={() => void sendChat()}
+      />
     </main>
-  );
+
+    {message && (
+      <p className="mx-auto mt-4 max-w-7xl rounded-lg bg-red-100 p-3 text-sm text-red-700">
+        {message}
+      </p>
+    )}
+
+    <footer
+      className={`mx-auto max-w-7xl px-6 pb-12 pt-6 text-center text-sm ${
+        darkMode ? "text-slate-500" : "text-slate-400"
+      }`}
+    >
+      <p>(c) 2024 TBS Arena</p>
+    </footer>
+
+    <MatchGlobalStyles />
+  </main>
+);
 }
+
+

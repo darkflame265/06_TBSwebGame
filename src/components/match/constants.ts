@@ -1,0 +1,21 @@
+import type { DisplayBoard } from "./types";
+
+export const BOARD_SIZE = 5;
+export const STEP_ANIMATION_MS = 320;
+export const PREVIEW_PATH_MS = 250;
+export const AI_STEP_ANIMATION_MS = 320;
+export const AI_PREVIEW_PATH_MS = 0;
+export const RED_PATH_STROKE = 8;
+export const BLUE_PATH_STROKE = 5;
+export const SUBMIT_BUFFER_MS = 3000;
+export const PLANNING_TOTAL_MS = 10000;
+export const PLANNING_UI_MS = PLANNING_TOTAL_MS - SUBMIT_BUFFER_MS;
+export const MAX_CELL_SIZE = 86;
+export const MIN_CELL_SIZE = 24;
+export const MAX_CELL_SIZE_BELOW = 72;
+export const MAX_CELL_SIZE_NARROW = 68;
+export const CELL_GAP = 8;
+export const DEFAULT_BOARD: DisplayBoard = { p1: [0, 2], p2: [4, 2] };
+export const BOARD_CLUSTER_GAP = 32;
+export const CHAT_MATCH_WINDOW_MS = 15000;
+export const CHAT_KEEP_MISSING_REALTIME_MS = 5000;

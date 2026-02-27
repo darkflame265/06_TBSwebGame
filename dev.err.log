@@ -1,2 +1,22 @@
 [obstacles] fallback used: requested=3, generated=0, attempt=1
 [obstacles] fallback used: requested=3, generated=2, attempt=1
+ ⨯ ./src/components/match-client.tsx
+Error: 
+
+Caused by:
+    0: Failed to read source code from C:\06_TBSwebGame\src\components\match-client.tsx
+    1: stream did not contain valid UTF-8
+
+Import trace for requested module:
+./src/components/match-client.tsx
+./src/app/match/[matchId]/page.tsx
+ ⨯ ./src/components/match-client.tsx
+Error: 
+
+Caused by:
+    0: Failed to read source code from C:\06_TBSwebGame\src\components\match-client.tsx
+    1: stream did not contain valid UTF-8
+
+Import trace for requested module:
+./src/components/match-client.tsx
+./src/app/match/[matchId]/page.tsx
