@@ -3,7 +3,8 @@ import { NextResponse } from "next/server";
 export const preferredRegion = "icn1";
 import { z } from "zod";
 import { getAuthedClient, jsonError } from "@/lib/api";
-import { createUserSupabaseFromRequest } from "@/lib/supabase/server";
+import { createAdminSupabase, createUserSupabaseFromRequest } from "@/lib/supabase/server";
+import { generateObstacles, seedForMatchRound, type Coord } from "@/lib/obstacles";
 
 const paramsSchema = z.object({
   matchId: z.string().uuid()
@@ -21,6 +22,57 @@ type MatchRow = {
   created_at: string | null;
   [key: string]: unknown;
 };
+
+async function ensurePlanningObstaclesForSnapshot(
+  matchData: MatchRow,
+  matchId: string,
+): Promise<{ error: string | null; updated: boolean }> {
+  if (
+    matchData.phase !== "planning" ||
+    !matchData.board_state ||
+    matchData.obstacles_turn === matchData.current_turn
+  ) {
+    return { error: null, updated: false };
+  }
+
+  const boardState = matchData.board_state as { p1: Coord; p2: Coord };
+  const currentTurn = matchData.current_turn as number;
+  const p1 = boardState.p1;
+  const p2 = boardState.p2;
+  const chaserPos = matchData.attacker_slot === 1 ? p1 : p2;
+  const runnerPos = matchData.attacker_slot === 1 ? p2 : p1;
+  const seed = seedForMatchRound(matchId, currentTurn);
+  const generated = generateObstacles({
+    gridSize: 5,
+    chaserPos,
+    runnerPos,
+    obstacleCount: 3,
+    seed
+  });
+  const obstacleArray = Array.from(generated).map((key) => {
+    const [x, y] = key.split(",").map(Number);
+    return [x, y] as [number, number];
+  });
+
+  const admin = createAdminSupabase();
+  const { error: updateObstacleError } = await admin
+    .from("matches")
+    .update({
+      obstacles: obstacleArray,
+      obstacles_turn: currentTurn
+    })
+    .eq("id", matchId)
+    .eq("current_turn", currentTurn)
+    .eq("phase", "planning");
+
+  if (updateObstacleError) {
+    return { error: updateObstacleError.message, updated: false };
+  }
+
+  matchData.obstacles = obstacleArray;
+  matchData.obstacles_turn = currentTurn;
+  return { error: null, updated: true };
+}
 
 async function buildMatchResponse(
   matchData: MatchRow,
@@ -237,6 +289,20 @@ export async function GET(request: Request, context: Context) {
   }
   if (!matchData) {
     return withTiming(jsonError("Match not found", 404));
+  }
+
+  // Correctness fallback: if planning started without obstacle provisioning signal,
+  // provision once on GET to prevent clients from being stuck in "Preparing obstacle layout...".
+  if (view === "live") {
+    const obstacleStart = performance.now();
+    const obstacleResult = await ensurePlanningObstaclesForSnapshot(
+      matchData as MatchRow,
+      matchId,
+    );
+    addTiming("ensure_obstacles_get", obstacleStart);
+    if (obstacleResult.error) {
+      return withTiming(jsonError(obstacleResult.error, 400));
+    }
   }
 
   const responseBuildStart = performance.now();
