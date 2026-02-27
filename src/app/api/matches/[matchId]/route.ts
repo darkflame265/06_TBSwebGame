@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+
+export const preferredRegion = "icn1";
 import { z } from "zod";
 import { getAuthedUser, jsonError } from "@/lib/api";
 import { createAdminSupabase, createUserSupabaseFromRequest } from "@/lib/supabase/server";
@@ -123,7 +125,7 @@ export async function POST(request: Request, context: Context) {
     return jsonError(tickError.message, 400);
   }
 
-  // Single read with all fields — used for both mutation logic and the final response
+  // Single read with all fields ??used for both mutation logic and the final response
   const { data: matchData, error: matchError } = await client
     .from("matches")
     .select(
@@ -264,3 +266,4 @@ export async function GET(request: Request, context: Context) {
 
   return buildMatchResponse(matchData, matchId, client);
 }
+

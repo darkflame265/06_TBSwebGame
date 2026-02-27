@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+
+export const preferredRegion = "icn1";
 import { getAuthedUser, jsonError } from "@/lib/api";
 
 export async function POST(request: Request) {
@@ -18,4 +20,5 @@ export async function POST(request: Request) {
 
   return NextResponse.json({ status: "cancelled" }, { status: 200 });
 }
+
 

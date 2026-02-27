@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+
+export const preferredRegion = "icn1";
 import { z } from "zod";
 import { getAuthedUser, jsonError, parseBody } from "@/lib/api";
 
@@ -116,3 +118,4 @@ export async function POST(request: Request, context: Context) {
 
   return NextResponse.json({ ok: true }, { status: 201 });
 }
+
