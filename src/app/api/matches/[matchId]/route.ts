@@ -15,7 +15,7 @@ type Context = {
   params: Promise<{ matchId: string }>;
 };
 
-export async function GET(request: Request, context: Context) {
+export async function POST(request: Request, context: Context) {
   const { error, client } = await getAuthedUser(request);
   if (error || !client) {
     return error ?? jsonError("Unauthorized", 401);
@@ -35,29 +35,34 @@ export async function GET(request: Request, context: Context) {
     return jsonError(tickError.message, 400);
   }
 
-  const { data: obstacleState, error: obstacleStateError } = await client
+  // Single read with all fields — used for both mutation logic and the final response
+  const { data: matchData, error: matchError } = await client
     .from("matches")
-    .select("id,type,status,current_turn,phase,board_state,attacker_slot,obstacles,obstacles_turn")
+    .select(
+      "id,type,status,room_code,current_turn,current_player_slot,winner_slot,ended_reason,left_by,ended_at,board_state,obstacles,obstacles_turn,phase,planning_ends_at,resolution_ends_at,resolved_paths,p1_hp,p2_hp,attacker_slot,rematch_p1_requested,rematch_p2_requested,rematch_match_id,created_at"
+    )
     .eq("id", matchId)
     .maybeSingle();
 
-  if (obstacleStateError) {
-    return jsonError(obstacleStateError.message, 400);
+  if (matchError) {
+    return jsonError(matchError.message, 400);
+  }
+  if (!matchData) {
+    return jsonError("Match not found", 404);
   }
 
-  let planningObstacles = (obstacleState?.obstacles ?? []) as Coord[];
+  let planningObstacles = (matchData.obstacles ?? []) as Coord[];
 
   if (
-    obstacleState &&
-    obstacleState.phase === "planning" &&
-    obstacleState.board_state &&
-    obstacleState.obstacles_turn !== obstacleState.current_turn
+    matchData.phase === "planning" &&
+    matchData.board_state &&
+    matchData.obstacles_turn !== matchData.current_turn
   ) {
-    const p1 = obstacleState.board_state.p1 as Coord;
-    const p2 = obstacleState.board_state.p2 as Coord;
-    const chaserPos = obstacleState.attacker_slot === 1 ? p1 : p2;
-    const runnerPos = obstacleState.attacker_slot === 1 ? p2 : p1;
-    const seed = seedForMatchRound(matchId, obstacleState.current_turn);
+    const p1 = matchData.board_state.p1 as Coord;
+    const p2 = matchData.board_state.p2 as Coord;
+    const chaserPos = matchData.attacker_slot === 1 ? p1 : p2;
+    const runnerPos = matchData.attacker_slot === 1 ? p2 : p1;
+    const seed = seedForMatchRound(matchId, matchData.current_turn);
     const generated = generateObstacles({
       gridSize: 5,
       chaserPos,
@@ -76,34 +81,38 @@ export async function GET(request: Request, context: Context) {
       .from("matches")
       .update({
         obstacles: obstacleArray,
-        obstacles_turn: obstacleState.current_turn
+        obstacles_turn: matchData.current_turn
       })
       .eq("id", matchId)
-      .eq("current_turn", obstacleState.current_turn)
+      .eq("current_turn", matchData.current_turn)
       .eq("phase", "planning");
 
     if (updateObstacleError) {
       return jsonError(updateObstacleError.message, 400);
     }
+
+    // Reflect the write in the local object to avoid a redundant re-query
+    matchData.obstacles = obstacleArray;
+    matchData.obstacles_turn = matchData.current_turn;
   }
 
-  if (obstacleState?.type === "ai" && obstacleState.status === "active" && obstacleState.phase === "planning") {
+  if (matchData.type === "ai" && matchData.status === "active" && matchData.phase === "planning") {
     const { data: currentTurns, error: turnsError } = await client
       .from("turns")
       .select("player_slot")
       .eq("match_id", matchId)
-      .eq("turn_number", obstacleState.current_turn);
+      .eq("turn_number", matchData.current_turn);
 
     if (turnsError) {
       return jsonError(turnsError.message, 400);
     }
 
     const botAlreadySubmitted = (currentTurns ?? []).some((t) => t.player_slot === 2);
-    if (!botAlreadySubmitted && obstacleState.board_state) {
-      const p1 = obstacleState.board_state.p1 as Coord;
-      const p2 = obstacleState.board_state.p2 as Coord;
-      const maxPoints = Math.min(obstacleState.current_turn + 4, 10);
-      const role = obstacleState.attacker_slot === 2 ? "ATTACK" : "EVADE";
+    if (!botAlreadySubmitted && matchData.board_state) {
+      const p1 = matchData.board_state.p1 as Coord;
+      const p2 = matchData.board_state.p2 as Coord;
+      const maxPoints = Math.min(matchData.current_turn + 4, 10);
+      const role = matchData.attacker_slot === 2 ? "ATTACK" : "EVADE";
       const path = generatePathForRole({
         gridSize: 5,
         role,
@@ -117,7 +126,7 @@ export async function GET(request: Request, context: Context) {
 
       const { error: botSubmitError } = await client.rpc("submit_bot_turn", {
         p_match_id: matchId,
-        p_round: obstacleState.current_turn,
+        p_round: matchData.current_turn,
         p_action: { path }
       });
 
@@ -134,14 +143,7 @@ export async function GET(request: Request, context: Context) {
     }
   }
 
-  const [matchResult, playersResult, turnsResult] = await Promise.all([
-    client
-      .from("matches")
-      .select(
-        "id,type,status,room_code,current_turn,current_player_slot,winner_slot,ended_reason,left_by,ended_at,board_state,obstacles,obstacles_turn,phase,planning_ends_at,resolution_ends_at,resolved_paths,p1_hp,p2_hp,attacker_slot,rematch_p1_requested,rematch_p2_requested,rematch_match_id,created_at"
-      )
-      .eq("id", matchId)
-      .maybeSingle(),
+  const [playersResult, turnsResult] = await Promise.all([
     client
       .from("match_players")
       .select("user_id,slot,joined_at")
@@ -154,12 +156,6 @@ export async function GET(request: Request, context: Context) {
       .order("turn_number", { ascending: true })
   ]);
 
-  if (matchResult.error) {
-    return jsonError(matchResult.error.message, 400);
-  }
-  if (!matchResult.data) {
-    return jsonError("Match not found", 404);
-  }
   if (playersResult.error) {
     return jsonError(playersResult.error.message, 400);
   }
@@ -169,8 +165,8 @@ export async function GET(request: Request, context: Context) {
 
   const playerRows = playersResult.data ?? [];
   const normalizedPlayers =
-    matchResult.data.type === "ai" && !playerRows.some((p) => p.slot === 2)
-      ? [...playerRows, { user_id: AI_USER_ID, slot: 2, joined_at: matchResult.data.created_at }]
+    matchData.type === "ai" && !playerRows.some((p) => p.slot === 2)
+      ? [...playerRows, { user_id: AI_USER_ID, slot: 2, joined_at: matchData.created_at }]
       : playerRows;
   const playerIds = normalizedPlayers.map((p) => p.user_id).filter((id) => id !== AI_USER_ID);
   const nicknameMap = new Map<string, string | null>();
@@ -210,7 +206,7 @@ export async function GET(request: Request, context: Context) {
   }
 
   return NextResponse.json({
-    ...matchResult.data,
+    ...matchData,
     players: normalizedPlayers.map((player) => ({
       ...player,
       nickname: player.user_id === AI_USER_ID ? "AI Bot" : (nicknameMap.get(player.user_id) ?? null),

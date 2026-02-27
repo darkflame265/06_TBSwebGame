@@ -467,7 +467,7 @@ export function MatchClient({ matchId }: Props) {
 
   const loadMatch = async () => {
     try {
-      const data = await apiGet<MatchResponse>(`/api/matches/${matchId}`);
+      const data = await apiPost<MatchResponse>(`/api/matches/${matchId}`);
       const nextBoard = data.board_state ?? DEFAULT_BOARD;
       const prev = prevMatchRef.current;
 
@@ -688,11 +688,15 @@ export function MatchClient({ matchId }: Props) {
   }, []);
 
   useEffect(() => {
-    const pollMs = match?.type === "ai" ? 120 : 1000;
+    // NOTE:
+    // POST /api/matches/[matchId] performs server-side tick alongside the read.
+    // Periodic loadMatch calls are required regardless of realtime health
+    // so that phase progression (resolving → planning) is never stalled.
+    const pollMs = match?.status === "active" ? 1000 : 3000;
     const poll = setInterval(() => loadMatch(), pollMs);
     return () => clearInterval(poll);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [matchId, match?.type]);
+  }, [matchId, match?.status]);
 
   useEffect(() => {
     const stopDragging = () => setDraggingPath(false);
