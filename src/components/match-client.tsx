@@ -127,6 +127,10 @@ export function MatchClient({ matchId }: Props) {
   const loadMatchDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+  const submitFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const lastLoadMatchAtRef = useRef(0);
   const tickInFlightRef = useRef(false);
   const lastTickAtRef = useRef(0);
   const boardClusterHostRef = useRef<HTMLDivElement | null>(null);
@@ -467,6 +471,7 @@ export function MatchClient({ matchId }: Props) {
     try {
       const data = await fetchMatch(matchId);
       await applyMatchData(data);
+      lastLoadMatchAtRef.current = Date.now();
     } catch (error) {
       setMessage(
         error instanceof Error ? error.message : "Failed to load match",
@@ -510,6 +515,20 @@ export function MatchClient({ matchId }: Props) {
       loadMatchDebounceTimerRef.current = null;
       void loadMatch();
     }, delayMs);
+  };
+
+  const clearSubmitFallback = () => {
+    if (!submitFallbackTimerRef.current) return;
+    clearTimeout(submitFallbackTimerRef.current);
+    submitFallbackTimerRef.current = null;
+  };
+
+  const armSubmitFallback = () => {
+    clearSubmitFallback();
+    submitFallbackTimerRef.current = setTimeout(() => {
+      submitFallbackTimerRef.current = null;
+      scheduleLoadMatch(0);
+    }, 1300);
   };
 
   const pushIncomingChat = (row: ChatRealtimeRow) => {
@@ -649,6 +668,7 @@ export function MatchClient({ matchId }: Props) {
   useEffect(() => {
     const refreshOnReturn = () => {
       if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastLoadMatchAtRef.current < 2500) return;
       scheduleLoadMatch(0);
     };
 
@@ -666,6 +686,7 @@ export function MatchClient({ matchId }: Props) {
       if (loadMatchDebounceTimerRef.current) {
         clearTimeout(loadMatchDebounceTimerRef.current);
       }
+      clearSubmitFallback();
     };
   }, []);
 
@@ -746,6 +767,19 @@ export function MatchClient({ matchId }: Props) {
             created_by: row.created_by,
             created_at: row.created_at,
           });
+          const latest = matchRef.current;
+          const myUserId = me;
+          if (latest && myUserId) {
+            const myLatestSlot =
+              latest.players.find((p) => p.user_id === myUserId)?.slot ?? null;
+            if (
+              myLatestSlot !== null &&
+              row.player_slot === myLatestSlot &&
+              row.turn_number === latest.current_turn
+            ) {
+              clearSubmitFallback();
+            }
+          }
         },
       )
       .on(
@@ -778,6 +812,19 @@ export function MatchClient({ matchId }: Props) {
             created_by: row.created_by,
             created_at: row.created_at,
           });
+          const latest = matchRef.current;
+          const myUserId = me;
+          if (latest && myUserId) {
+            const myLatestSlot =
+              latest.players.find((p) => p.user_id === myUserId)?.slot ?? null;
+            if (
+              myLatestSlot !== null &&
+              row.player_slot === myLatestSlot &&
+              row.turn_number === latest.current_turn
+            ) {
+              clearSubmitFallback();
+            }
+          }
         },
       )
       .on(
@@ -800,7 +847,6 @@ export function MatchClient({ matchId }: Props) {
             return;
           }
           patchMatchRow(row);
-          scheduleLoadMatch(500);
         },
       )
       .on(
@@ -838,7 +884,7 @@ export function MatchClient({ matchId }: Props) {
       supabase.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [matchId]);
+  }, [matchId, me]);
 
   useEffect(() => {
     const node = chatScrollRef.current;
@@ -931,7 +977,7 @@ export function MatchClient({ matchId }: Props) {
     submitInFlightRef.current = true;
     try {
       await submitMatchPath(matchId, match.current_turn, pathToSubmit);
-      scheduleLoadMatch(120);
+      armSubmitFallback();
     } catch (error) {
       const msg =
         error instanceof Error ? error.message : "Failed to submit path";
@@ -947,6 +993,7 @@ export function MatchClient({ matchId }: Props) {
         lockedPathRef.current = null;
         lastSyncTryAtRef.current = 0;
         setMessage(null);
+        clearSubmitFallback();
         scheduleLoadMatch(0);
         return;
       }
