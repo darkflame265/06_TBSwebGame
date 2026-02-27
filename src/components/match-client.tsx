@@ -467,7 +467,7 @@ export function MatchClient({ matchId }: Props) {
 
   const loadMatch = async () => {
     try {
-      const data = await apiPost<MatchResponse>(`/api/matches/${matchId}`);
+      const data = await apiGet<MatchResponse>(`/api/matches/${matchId}`);
       const nextBoard = data.board_state ?? DEFAULT_BOARD;
       const prev = prevMatchRef.current;
 
@@ -560,6 +560,14 @@ export function MatchClient({ matchId }: Props) {
       setMessage(
         error instanceof Error ? error.message : "Failed to load match",
       );
+    }
+  };
+
+  const tickMatch = async () => {
+    try {
+      await apiPost(`/api/matches/${matchId}/tick`);
+    } catch {
+      // tick is best-effort; loadMatch fallback poll still keeps state fresh
     }
   };
 
@@ -688,15 +696,22 @@ export function MatchClient({ matchId }: Props) {
   }, []);
 
   useEffect(() => {
-    // NOTE:
-    // POST /api/matches/[matchId] performs server-side tick alongside the read.
-    // Periodic loadMatch calls are required regardless of realtime health
-    // so that phase progression (resolving → planning) is never stalled.
-    const pollMs = match?.status === "active" ? 1000 : 3000;
-    const poll = setInterval(() => loadMatch(), pollMs);
-    return () => clearInterval(poll);
+    // Tick interval: drives game phase progression and AI bot moves.
+    // Realtime handles state delivery; this only needs to fire often enough
+    // to ensure timer-based transitions happen within ~3 s of the deadline.
+    if (match?.status !== "active") return;
+    const tick = setInterval(() => void tickMatch(), 3000);
+    return () => clearInterval(tick);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchId, match?.status]);
+
+  useEffect(() => {
+    // Fallback read poll: guards against Realtime connection failures.
+    // Under normal conditions Realtime drives state; this is a safety net.
+    const fallback = setInterval(() => void loadMatch(), 10000);
+    return () => clearInterval(fallback);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matchId]);
 
   useEffect(() => {
     const stopDragging = () => setDraggingPath(false);
@@ -715,7 +730,7 @@ export function MatchClient({ matchId }: Props) {
           table: "turns",
           filter: `match_id=eq.${matchId}`,
         },
-        () => loadMatch(),
+        () => { void tickMatch(); void loadMatch(); },
       )
       .on(
         "postgres_changes",
