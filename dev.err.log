@@ -1,1 +1,2 @@
- ⚠ Port 3000 is in use by process 19008, using available port 3001 instead.
+[obstacles] fallback used: requested=3, generated=0, attempt=1
+[obstacles] fallback used: requested=3, generated=2, attempt=1

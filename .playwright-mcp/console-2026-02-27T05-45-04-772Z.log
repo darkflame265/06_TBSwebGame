@@ -1,0 +1,6 @@
+[  140281ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:3000/api/matches/6e8f81db-638a-4454-bbe9-510bda438783/turns:0
+[  140627ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:3000/api/matches/6e8f81db-638a-4454-bbe9-510bda438783/turns:0
+[  153895ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:3000/api/matches/6e8f81db-638a-4454-bbe9-510bda438783/turns:0
+[  154233ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:3000/api/matches/6e8f81db-638a-4454-bbe9-510bda438783/turns:0
+[  165943ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:3000/api/matches/6e8f81db-638a-4454-bbe9-510bda438783/turns:0
+[  166134ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:3000/api/matches/6e8f81db-638a-4454-bbe9-510bda438783/turns:0

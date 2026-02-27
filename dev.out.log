@@ -3,15 +3,204 @@
 > next dev
 
    ▲ Next.js 15.5.12
-   - Local:        http://localhost:3001
-   - Network:      http://192.168.219.101:3001
+   - Local:        http://localhost:3000
+   - Network:      http://192.168.219.101:3000
    - Environments: .env.local
 
  ✓ Starting...
- ✓ Ready in 1414ms
-   Reload env: .env.local
-   Reload env: .env.local
-   Reload env: .env.local
-   Reload env: .env.local
-   Reload env: .env.local
-   Reload env: .env.local
+ ✓ Ready in 1431ms
+ ○ Compiling / ...
+ ✓ Compiled / in 1236ms (653 modules)
+ GET / 200 in 1630ms
+ ✓ Compiled /api/profile in 353ms (724 modules)
+ GET / 200 in 202ms
+ GET /api/profile 200 in 1260ms
+ ✓ Compiled /api/ai-match/create in 181ms (712 modules)
+ POST /api/ai-match/create 201 in 626ms
+ ✓ Compiled /match/[matchId] in 378ms (726 modules)
+ GET /match/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 847ms
+ ✓ Compiled /api/matches/[matchId]/chat in 284ms (732 modules)
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/chat 200 in 898ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/chat 200 in 1065ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 1068ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 1175ms
+ ✓ Compiled /api/matches/[matchId]/tick in 212ms (734 modules)
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/tick 200 in 921ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 277ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 746ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/tick 200 in 766ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 816ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/tick 200 in 163ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 219ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/tick 200 in 176ms
+ ✓ Compiled /api/matches/[matchId]/turns in 194ms (736 modules)
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/turns 201 in 719ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 225ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/tick 200 in 171ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 285ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 291ms
+ ✓ Compiled /api/matches/[matchId]/resolve-ack in 132ms (738 modules)
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/resolve-ack 200 in 647ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/tick 200 in 136ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 217ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/tick 200 in 269ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 279ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 284ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/tick 200 in 166ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 235ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/tick 200 in 172ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 226ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/tick 200 in 146ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/turns 201 in 92ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 224ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/tick 200 in 123ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 249ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 258ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/tick 200 in 115ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/resolve-ack 200 in 85ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 197ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/tick 200 in 299ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 234ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 264ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/tick 200 in 173ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 272ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 251ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/tick 200 in 161ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/tick 200 in 159ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/turns 201 in 92ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 257ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/tick 200 in 129ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 222ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 264ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/resolve-ack 200 in 95ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/tick 200 in 155ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 208ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 221ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/tick 200 in 286ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 267ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 212ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/tick 200 in 181ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 229ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/tick 200 in 172ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/tick 200 in 157ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/turns 201 in 86ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 227ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/tick 200 in 129ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 245ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 254ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/tick 200 in 120ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/resolve-ack 200 in 86ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 239ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 192ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/tick 200 in 285ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 221ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 295ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/tick 200 in 172ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 217ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/tick 200 in 164ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/tick 200 in 173ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/turns 201 in 94ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 240ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/tick 200 in 160ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 204ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 260ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 504ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/tick 200 in 128ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/resolve-ack 200 in 107ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 224ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/tick 200 in 277ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/tick 200 in 227ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 246ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 252ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 268ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/tick 200 in 187ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 242ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/tick 200 in 153ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/turns 201 in 107ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 199ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/tick 200 in 137ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 234ms
+ GET /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416 200 in 250ms
+ ✓ Compiled /api/matches/[matchId]/leave in 265ms (734 modules)
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/leave 200 in 817ms
+ GET / 200 in 65ms
+ ✓ Compiled /api/profile in 97ms (458 modules)
+ GET /api/profile 200 in 277ms
+ POST /api/matches/f71b44bc-bba6-41f1-9171-7c7591837416/resolve-ack 200 in 117ms
+ GET / 200 in 212ms
+ GET /api/profile 200 in 116ms
+ GET / 200 in 37ms
+ GET /api/profile 200 in 132ms
+ ✓ Compiled /api/ai-match/create in 91ms (460 modules)
+ POST /api/ai-match/create 201 in 212ms
+ GET /match/6e8f81db-638a-4454-bbe9-510bda438783 200 in 57ms
+ ✓ Compiled /api/matches/[matchId]/chat in 186ms (462 modules)
+ GET /api/matches/6e8f81db-638a-4454-bbe9-510bda438783 200 in 329ms
+ GET /api/matches/6e8f81db-638a-4454-bbe9-510bda438783/chat 200 in 537ms
+ GET /api/matches/6e8f81db-638a-4454-bbe9-510bda438783/chat 200 in 513ms
+ GET /api/matches/6e8f81db-638a-4454-bbe9-510bda438783 200 in 581ms
+ POST /api/matches/6e8f81db-638a-4454-bbe9-510bda438783/tick 200 in 595ms
+ GET /api/matches/6e8f81db-638a-4454-bbe9-510bda438783 200 in 289ms
+ POST /api/matches/6e8f81db-638a-4454-bbe9-510bda438783/tick 200 in 178ms
+ GET /api/matches/6e8f81db-638a-4454-bbe9-510bda438783 200 in 211ms
+ GET /api/matches/6e8f81db-638a-4454-bbe9-510bda438783 200 in 363ms
+ POST /api/matches/6e8f81db-638a-4454-bbe9-510bda438783/tick 200 in 189ms
+ POST /api/matches/6e8f81db-638a-4454-bbe9-510bda438783/tick 200 in 182ms
+ GET /api/matches/6e8f81db-638a-4454-bbe9-510bda438783 200 in 272ms
+ POST /api/matches/6e8f81db-638a-4454-bbe9-510bda438783/turns 201 in 140ms
+ GET /api/matches/6e8f81db-638a-4454-bbe9-510bda438783 200 in 212ms
+ POST /api/matches/6e8f81db-638a-4454-bbe9-510bda438783/turns 400 in 155ms
+ POST /api/matches/6e8f81db-638a-4454-bbe9-510bda438783/tick 200 in 219ms
+ POST /api/matches/6e8f81db-638a-4454-bbe9-510bda438783/tick 200 in 193ms
+ GET /api/matches/6e8f81db-638a-4454-bbe9-510bda438783 200 in 249ms
+ POST /api/matches/6e8f81db-638a-4454-bbe9-510bda438783/turns 400 in 199ms
+ GET /api/matches/6e8f81db-638a-4454-bbe9-510bda438783 200 in 301ms
+ GET /api/matches/6e8f81db-638a-4454-bbe9-510bda438783 200 in 306ms
+ GET /api/matches/6e8f81db-638a-4454-bbe9-510bda438783 200 in 198ms
+ POST /api/matches/6e8f81db-638a-4454-bbe9-510bda438783/resolve-ack 200 in 111ms
+ GET /api/matches/6e8f81db-638a-4454-bbe9-510bda438783 200 in 228ms
+ POST /api/matches/6e8f81db-638a-4454-bbe9-510bda438783/tick 200 in 124ms
+ POST /api/matches/6e8f81db-638a-4454-bbe9-510bda438783/tick 200 in 321ms
+ POST /api/matches/6e8f81db-638a-4454-bbe9-510bda438783/tick 200 in 239ms
+ GET /api/matches/6e8f81db-638a-4454-bbe9-510bda438783 200 in 242ms
+ GET /api/matches/6e8f81db-638a-4454-bbe9-510bda438783 200 in 265ms
+ GET /api/matches/6e8f81db-638a-4454-bbe9-510bda438783 200 in 288ms
+ GET /api/matches/6e8f81db-638a-4454-bbe9-510bda438783 200 in 204ms
+ POST /api/matches/6e8f81db-638a-4454-bbe9-510bda438783/tick 200 in 161ms
+ POST /api/matches/6e8f81db-638a-4454-bbe9-510bda438783/tick 200 in 169ms
+ POST /api/matches/6e8f81db-638a-4454-bbe9-510bda438783/turns 201 in 94ms
+ POST /api/matches/6e8f81db-638a-4454-bbe9-510bda438783/turns 400 in 78ms
+ GET /api/matches/6e8f81db-638a-4454-bbe9-510bda438783 200 in 294ms
+ POST /api/matches/6e8f81db-638a-4454-bbe9-510bda438783/tick 200 in 172ms
+ GET /api/matches/6e8f81db-638a-4454-bbe9-510bda438783 200 in 235ms
+ GET /api/matches/6e8f81db-638a-4454-bbe9-510bda438783 200 in 266ms
+ GET /api/matches/6e8f81db-638a-4454-bbe9-510bda438783 200 in 227ms
+ POST /api/matches/6e8f81db-638a-4454-bbe9-510bda438783/turns 400 in 108ms
+ GET /api/matches/6e8f81db-638a-4454-bbe9-510bda438783 200 in 211ms
+ POST /api/matches/6e8f81db-638a-4454-bbe9-510bda438783/tick 200 in 158ms
+ POST /api/matches/6e8f81db-638a-4454-bbe9-510bda438783/resolve-ack 200 in 93ms
+ GET /api/matches/6e8f81db-638a-4454-bbe9-510bda438783 200 in 249ms
+ GET /api/matches/6e8f81db-638a-4454-bbe9-510bda438783 200 in 220ms
+ POST /api/matches/6e8f81db-638a-4454-bbe9-510bda438783/tick 200 in 266ms
+ POST /api/matches/6e8f81db-638a-4454-bbe9-510bda438783/tick 200 in 228ms
+ GET /api/matches/6e8f81db-638a-4454-bbe9-510bda438783 200 in 247ms
+ GET /api/matches/6e8f81db-638a-4454-bbe9-510bda438783 200 in 253ms
+ GET /api/matches/6e8f81db-638a-4454-bbe9-510bda438783 200 in 262ms
+ POST /api/matches/6e8f81db-638a-4454-bbe9-510bda438783/tick 200 in 143ms
+ POST /api/matches/6e8f81db-638a-4454-bbe9-510bda438783/tick 200 in 187ms
+ POST /api/matches/6e8f81db-638a-4454-bbe9-510bda438783/turns 201 in 137ms
+ POST /api/matches/6e8f81db-638a-4454-bbe9-510bda438783/turns 400 in 152ms
+ GET /api/matches/6e8f81db-638a-4454-bbe9-510bda438783 200 in 275ms
+ POST /api/matches/6e8f81db-638a-4454-bbe9-510bda438783/tick 200 in 173ms
+ GET /api/matches/6e8f81db-638a-4454-bbe9-510bda438783 200 in 265ms
+ GET /api/matches/6e8f81db-638a-4454-bbe9-510bda438783 200 in 281ms
+ POST /api/matches/6e8f81db-638a-4454-bbe9-510bda438783/turns 400 in 91ms
+ GET /api/matches/6e8f81db-638a-4454-bbe9-510bda438783 200 in 225ms
+ GET /api/matches/6e8f81db-638a-4454-bbe9-510bda438783 200 in 185ms
+ POST /api/matches/6e8f81db-638a-4454-bbe9-510bda438783/tick 200 in 122ms
+ GET /api/matches/6e8f81db-638a-4454-bbe9-510bda438783 200 in 183ms
+ POST /api/matches/6e8f81db-638a-4454-bbe9-510bda438783/resolve-ack 200 in 97ms
+ GET /api/matches/6e8f81db-638a-4454-bbe9-510bda438783 200 in 183ms
+ POST /api/matches/6e8f81db-638a-4454-bbe9-510bda438783/leave 200 in 91ms
+ GET / 200 in 54ms
+ GET /api/profile 200 in 82ms
