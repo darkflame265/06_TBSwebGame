@@ -126,6 +126,9 @@ export function MatchClient({ matchId }: Props) {
   const matchRef = useRef<MatchResponse | null>(null);
   const loadMatchPromiseRef = useRef<Promise<void> | null>(null);
   const loadMatchQueuedRef = useRef(false);
+  const loadMatchDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const tickInFlightRef = useRef(false);
   const lastTickAtRef = useRef(0);
   const boardClusterHostRef = useRef<HTMLDivElement | null>(null);
@@ -493,6 +496,16 @@ export function MatchClient({ matchId }: Props) {
     }
   };
 
+  const scheduleLoadMatch = (delayMs = 150) => {
+    if (loadMatchDebounceTimerRef.current) {
+      clearTimeout(loadMatchDebounceTimerRef.current);
+    }
+    loadMatchDebounceTimerRef.current = setTimeout(() => {
+      loadMatchDebounceTimerRef.current = null;
+      void loadMatch();
+    }, delayMs);
+  };
+
   const pushIncomingChat = (row: ChatRealtimeRow) => {
     const nickname =
       matchRef.current?.players.find((p) => p.user_id === row.user_id)
@@ -628,7 +641,7 @@ export function MatchClient({ matchId }: Props) {
   useEffect(() => {
     const refreshOnReturn = () => {
       if (document.visibilityState !== "visible") return;
-      void loadMatch();
+      scheduleLoadMatch(0);
     };
 
     window.addEventListener("focus", refreshOnReturn);
@@ -641,21 +654,20 @@ export function MatchClient({ matchId }: Props) {
   }, [matchId]);
 
   useEffect(() => {
+    return () => {
+      if (loadMatchDebounceTimerRef.current) {
+        clearTimeout(loadMatchDebounceTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     const stopDragging = () => setDraggingPath(false);
     window.addEventListener("pointerup", stopDragging);
     return () => window.removeEventListener("pointerup", stopDragging);
   }, []);
 
   useEffect(() => {
-    let scheduledRefresh: ReturnType<typeof setTimeout> | null = null;
-    const scheduleLoadMatch = () => {
-      if (scheduledRefresh) clearTimeout(scheduledRefresh);
-      scheduledRefresh = setTimeout(() => {
-        scheduledRefresh = null;
-        void loadMatch();
-      }, 150);
-    };
-
     type TurnRow = {
       id: number;
       turn_number: number;
@@ -817,7 +829,6 @@ export function MatchClient({ matchId }: Props) {
       .subscribe();
 
     return () => {
-      if (scheduledRefresh) clearTimeout(scheduledRefresh);
       supabase.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -914,7 +925,7 @@ export function MatchClient({ matchId }: Props) {
     submitInFlightRef.current = true;
     try {
       await submitMatchPath(matchId, match.current_turn, pathToSubmit);
-      await loadMatch();
+      scheduleLoadMatch(120);
     } catch (error) {
       const msg =
         error instanceof Error ? error.message : "Failed to submit path";
@@ -930,7 +941,7 @@ export function MatchClient({ matchId }: Props) {
         lockedPathRef.current = null;
         lastSyncTryAtRef.current = 0;
         setMessage(null);
-        await loadMatch();
+        scheduleLoadMatch(0);
         return;
       }
       setMessage(msg);
@@ -1098,7 +1109,7 @@ export function MatchClient({ matchId }: Props) {
         router.push(`/match/${res.match_id}`);
         return;
       }
-      await loadMatch();
+      scheduleLoadMatch(120);
     } catch (error) {
       setMessage(
         error instanceof Error ? error.message : "Failed to request rematch",
