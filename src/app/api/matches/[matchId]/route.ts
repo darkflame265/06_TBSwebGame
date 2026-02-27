@@ -217,3 +217,103 @@ export async function POST(request: Request, context: Context) {
     turns: turnsResult.data ?? []
   });
 }
+
+export async function GET(request: Request, context: Context) {
+  const { error, client } = await getAuthedUser(request);
+  if (error || !client) {
+    return error ?? jsonError("Unauthorized", 401);
+  }
+
+  const rawParams = await context.params;
+  const parsedParams = paramsSchema.safeParse(rawParams);
+  if (!parsedParams.success) {
+    return jsonError("Invalid match id", 400);
+  }
+  const { matchId } = parsedParams.data;
+
+  const { data: matchData, error: matchError } = await client
+    .from("matches")
+    .select(
+      "id,type,status,room_code,current_turn,current_player_slot,winner_slot,ended_reason,left_by,ended_at,board_state,obstacles,obstacles_turn,phase,planning_ends_at,resolution_ends_at,resolved_paths,p1_hp,p2_hp,attacker_slot,rematch_p1_requested,rematch_p2_requested,rematch_match_id,created_at"
+    )
+    .eq("id", matchId)
+    .maybeSingle();
+
+  if (matchError) {
+    return jsonError(matchError.message, 400);
+  }
+  if (!matchData) {
+    return jsonError("Match not found", 404);
+  }
+
+  const [playersResult, turnsResult] = await Promise.all([
+    client
+      .from("match_players")
+      .select("user_id,slot,joined_at")
+      .eq("match_id", matchId)
+      .order("slot", { ascending: true }),
+    client
+      .from("turns")
+      .select("id,turn_number,player_slot,action_payload,created_by,created_at")
+      .eq("match_id", matchId)
+      .order("turn_number", { ascending: true }),
+  ]);
+
+  if (playersResult.error) {
+    return jsonError(playersResult.error.message, 400);
+  }
+  if (turnsResult.error) {
+    return jsonError(turnsResult.error.message, 400);
+  }
+
+  const playerRows = playersResult.data ?? [];
+  const normalizedPlayers =
+    matchData.type === "ai" && !playerRows.some((p) => p.slot === 2)
+      ? [...playerRows, { user_id: AI_USER_ID, slot: 2, joined_at: matchData.created_at }]
+      : playerRows;
+  const playerIds = normalizedPlayers.map((p) => p.user_id).filter((id) => id !== AI_USER_ID);
+  const nicknameMap = new Map<string, string | null>();
+  const statsMap = new Map<string, { wins: number; losses: number; win_rate: number }>();
+
+  if (playerIds.length > 0) {
+    const { data: profileRows, error: profilesError } = await client
+      .from("user_profiles")
+      .select("user_id,nickname")
+      .in("user_id", playerIds);
+
+    if (profilesError) {
+      return jsonError(profilesError.message, 400);
+    }
+    for (const profile of profileRows ?? []) {
+      nicknameMap.set(profile.user_id, profile.nickname ?? null);
+    }
+
+    const { data: statRows, error: statsError } = await client.rpc(
+      "get_user_match_stats",
+      { p_user_ids: playerIds }
+    );
+    if (statsError) {
+      return jsonError(statsError.message, 400);
+    }
+    for (const row of statRows ?? []) {
+      const userId = row.user_id as string;
+      statsMap.set(userId, {
+        wins: Number(row.wins ?? 0),
+        losses: Number(row.losses ?? 0),
+        win_rate: Number(row.win_rate ?? 0),
+      });
+    }
+  }
+
+  return NextResponse.json({
+    ...matchData,
+    players: normalizedPlayers.map((player) => ({
+      ...player,
+      nickname: player.user_id === AI_USER_ID ? "AI Bot" : (nicknameMap.get(player.user_id) ?? null),
+      wins: player.user_id === AI_USER_ID ? 0 : (statsMap.get(player.user_id)?.wins ?? 0),
+      losses: player.user_id === AI_USER_ID ? 0 : (statsMap.get(player.user_id)?.losses ?? 0),
+      win_rate: player.user_id === AI_USER_ID ? 0 : (statsMap.get(player.user_id)?.win_rate ?? 0),
+    })),
+    turns: turnsResult.data ?? [],
+  });
+}
