@@ -29,6 +29,24 @@ type AiMatchSnapshot = {
   attacker_slot: 1 | 2;
 };
 
+type SubmitTurnAtomicResponse = {
+  submitted_turn?: {
+    id: number;
+    turn_number: number;
+    player_slot: number;
+    action_payload: Record<string, unknown>;
+    created_by: string;
+    created_at: string;
+  };
+  ai_context?: {
+    current_turn: number;
+    attacker_slot: 1 | 2;
+    board_state: { p1: Coord; p2: Coord } | null;
+    obstacles: Coord[];
+    bot_submitted: boolean;
+  } | null;
+};
+
 export async function POST(request: Request, context: Context) {
   const timings: string[] = [];
   const addTiming = (name: string, start: number) => {
@@ -62,6 +80,71 @@ export async function POST(request: Request, context: Context) {
   addTiming("body_parse", bodyStart);
   if (!body.success) {
     return withTiming(body.response);
+  }
+
+  const atomicStart = performance.now();
+  const { data: atomicData, error: atomicError } = await client.rpc(
+    "submit_turn_and_get_ai_context",
+    {
+      p_match_id: parsedParams.data.matchId,
+      p_round: body.data.round,
+      p_action: body.data.action,
+    },
+  );
+  addTiming("submit_turn_atomic_rpc", atomicStart);
+
+  if (!atomicError && atomicData) {
+    const parsed = atomicData as SubmitTurnAtomicResponse;
+    const submittedTurn = parsed.submitted_turn;
+    if (!submittedTurn) {
+      return withTiming(jsonError("Failed to submit turn", 400));
+    }
+
+    const aiContext = parsed.ai_context;
+    if (
+      aiContext &&
+      aiContext.board_state &&
+      !aiContext.bot_submitted &&
+      aiContext.current_turn === body.data.round
+    ) {
+      const p1 = aiContext.board_state.p1;
+      const p2 = aiContext.board_state.p2;
+      const maxPoints = Math.min(aiContext.current_turn + 4, 10);
+      const role = aiContext.attacker_slot === 2 ? "ATTACK" : "EVADE";
+      const path = generatePathForRole({
+        gridSize: 5,
+        role,
+        maxPoints,
+        selfPos: p2,
+        opponentPos: p1,
+        obstacles: aiContext.obstacles ?? [],
+      });
+
+      const aiSubmitStart = performance.now();
+      const { error: botSubmitError } = await client.rpc("submit_bot_turn", {
+        p_match_id: parsedParams.data.matchId,
+        p_round: aiContext.current_turn,
+        p_action: { path },
+      });
+      addTiming("ai_submit_rpc", aiSubmitStart);
+
+      if (botSubmitError) {
+        const msg = botSubmitError.message.toLowerCase();
+        const ignorable =
+          msg.includes("stale round") ||
+          msg.includes("planning window closed") ||
+          msg.includes("round is resolving");
+        if (!ignorable) {
+          return withTiming(jsonError(botSubmitError.message, 400));
+        }
+      }
+    }
+
+    return withTiming(NextResponse.json(submittedTurn, { status: 201 }));
+  }
+
+  if (atomicError) {
+    addTiming("submit_turn_atomic_fallback", atomicStart);
   }
 
   const submitStart = performance.now();

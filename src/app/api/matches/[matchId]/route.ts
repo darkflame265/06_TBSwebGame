@@ -307,6 +307,26 @@ export async function GET(request: Request, context: Context) {
   const includeProfiles = view !== "live";
   const includePlayers = view !== "live";
 
+  if (view === "live") {
+    const liveReadStart = performance.now();
+    const { data: liveSnapshot, error: liveError } = await client.rpc(
+      "get_match_live_snapshot",
+      {
+        p_match_id: matchId,
+        p_turn_scope: turnScope,
+      },
+    );
+    addTiming("get_live_snapshot_rpc", liveReadStart);
+    if (!liveError && liveSnapshot) {
+      return withTiming(NextResponse.json(liveSnapshot));
+    }
+    if (liveError) {
+      addTiming("get_live_snapshot_fallback", liveReadStart);
+    } else {
+      return withTiming(jsonError("Failed to load live snapshot", 400));
+    }
+  }
+
   const matchSelectStart = performance.now();
   const { data: matchData, error: matchError } = await client
     .from("matches")

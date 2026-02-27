@@ -3,10 +3,6 @@ import { NextResponse } from "next/server";
 export const preferredRegion = "icn1";
 import { z } from "zod";
 import { getAuthedClient, jsonError, parseBody } from "@/lib/api";
-import {
-  ensurePlanningObstaclesReady,
-  type PlanningObstacleClient,
-} from "@/lib/match-obstacles";
 
 const paramsSchema = z.object({
   matchId: z.string().uuid()
@@ -55,6 +51,25 @@ export async function POST(request: Request, context: Context) {
     return withTiming(body.response);
   }
 
+  const atomicStart = performance.now();
+  const { data: atomicData, error: atomicError } = await client.rpc(
+    "ack_resolve_and_prepare",
+    {
+      p_match_id: parsedParams.data.matchId,
+      p_turn: body.data.turn,
+    },
+  );
+  addTiming("ack_resolve_atomic_rpc", atomicStart);
+
+  if (!atomicError && atomicData) {
+    return withTiming(NextResponse.json({ ok: true, ticked: true, atomic: true }));
+  }
+
+  // Fallback when migration is not yet applied.
+  if (atomicError) {
+    addTiming("ack_resolve_atomic_fallback", atomicStart);
+  }
+
   const ackStart = performance.now();
   const { error: rpcError } = await client.rpc("ack_resolve", {
     p_match_id: parsedParams.data.matchId,
@@ -87,16 +102,6 @@ export async function POST(request: Request, context: Context) {
     if (!ignorable) {
       return withTiming(NextResponse.json({ ok: true, ticked: false }));
     }
-  }
-
-  const obstacleStart = performance.now();
-  const obstacleError = await ensurePlanningObstaclesReady(
-    client as unknown as PlanningObstacleClient,
-    parsedParams.data.matchId,
-  );
-  addTiming("ensure_obstacles", obstacleStart);
-  if (obstacleError) {
-    return withTiming(jsonError(obstacleError, 400));
   }
 
   return withTiming(NextResponse.json({ ok: true, ticked: true }));
