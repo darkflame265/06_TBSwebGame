@@ -1027,6 +1027,25 @@ export function MatchClient({ matchId }: Props) {
   }, [millisLeft]);
 
   useEffect(() => {
+    if (!match || match.status !== "active" || match.phase !== "resolving") return;
+    if (!match.resolved_paths) return;
+    if (animatingRef.current) return;
+    const turn = match.resolved_paths.turn;
+    if (ackedResolveTurnRef.current === turn) return;
+    ackedResolveTurnRef.current = turn;
+    void ackResolve(turn);
+  }, [match?.status, match?.phase, match?.resolved_paths]);
+
+  useEffect(() => {
+    if (!match || match.status !== "active" || match.phase !== "resolving") return;
+    const timer = window.setInterval(() => {
+      void tickMatch();
+    }, 1400);
+    return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [match?.status, match?.phase, match?.current_turn]);
+
+  useEffect(() => {
     if (!match || match.phase !== "planning" || match.status !== "active")
       return;
     if (mySlot === null || mySubmitted || animating) return;
