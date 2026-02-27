@@ -55,8 +55,6 @@ import {
   isLikelySameChat,
   isOrthogonalStep,
   isTypingTarget,
-  parsePath,
-  pathEquals,
   progressOnSegment,
   sameCoord,
   sleep,
@@ -1018,13 +1016,12 @@ export function MatchClient({ matchId }: Props) {
     const myTurn = match.turns.find(
       (t) => t.turn_number === match.current_turn && t.player_slot === mySlot,
     );
-    const serverPath = parsePath(
-      (myTurn?.action_payload as { path?: unknown } | undefined)?.path,
-    );
-    if (pathEquals(serverPath, locked)) return;
+    // Once the server has a turn row for me, avoid redundant resubmits.
+    if (myTurn) return;
 
     const now = Date.now();
-    if (now - lastSyncTryAtRef.current < 250) return;
+    if (submitInFlightRef.current) return;
+    if (now - lastSyncTryAtRef.current < 900) return;
     lastSyncTryAtRef.current = now;
     void submitPath(locked, { force: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps

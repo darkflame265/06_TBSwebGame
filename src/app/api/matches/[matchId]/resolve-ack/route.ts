@@ -3,10 +3,6 @@ import { NextResponse } from "next/server";
 export const preferredRegion = "icn1";
 import { z } from "zod";
 import { getAuthedClient, jsonError, parseBody } from "@/lib/api";
-import {
-  ensurePlanningObstaclesReady,
-  type PlanningObstacleClient,
-} from "@/lib/match-obstacles";
 
 const paramsSchema = z.object({
   matchId: z.string().uuid()
@@ -48,14 +44,6 @@ export async function POST(request: Request, context: Context) {
       return NextResponse.json({ ok: true });
     }
     return jsonError(rpcError.message, 400);
-  }
-
-  const obstacleError = await ensurePlanningObstaclesReady(
-    client as unknown as PlanningObstacleClient,
-    parsedParams.data.matchId,
-  );
-  if (obstacleError) {
-    return jsonError(obstacleError, 400);
   }
 
   return NextResponse.json({ ok: true });
