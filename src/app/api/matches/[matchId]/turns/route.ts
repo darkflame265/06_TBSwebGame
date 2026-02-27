@@ -40,8 +40,25 @@ export async function POST(request: Request, context: Context) {
     p_action: body.data.action
   });
 
-  if (rpcError || !data) {
-    return jsonError(rpcError?.message ?? "Failed to submit turn", 400);
+  if (rpcError) {
+    const msg = rpcError.message.toLowerCase();
+    const benignTransition =
+      msg.includes("stale round") ||
+      msg.includes("planning window closed") ||
+      msg.includes("round is resolving") ||
+      msg.includes("round resolving") ||
+      msg.includes("resolving");
+    if (benignTransition) {
+      return NextResponse.json(
+        { ok: true, skipped: true, reason: "round_transition" },
+        { status: 201 },
+      );
+    }
+    return jsonError(rpcError.message, 400);
+  }
+
+  if (!data) {
+    return jsonError("Failed to submit turn", 400);
   }
 
   return NextResponse.json(data, { status: 201 });
