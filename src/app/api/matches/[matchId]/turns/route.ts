@@ -18,27 +18,46 @@ type Context = {
 };
 
 export async function POST(request: Request, context: Context) {
+  const timings: string[] = [];
+  const addTiming = (name: string, start: number) => {
+    timings.push(`${name};dur=${(performance.now() - start).toFixed(1)}`);
+  };
+  const withTiming = (response: NextResponse) => {
+    if (timings.length > 0) {
+      response.headers.set("Server-Timing", timings.join(", "));
+    }
+    return response;
+  };
+
+  const authStart = performance.now();
   const { error, client } = await getAuthedClient(request);
+  addTiming("auth", authStart);
   if (error || !client) {
-    return error ?? jsonError("Unauthorized", 401);
+    return withTiming(error ?? jsonError("Unauthorized", 401));
   }
 
+  const paramsStart = performance.now();
   const rawParams = await context.params;
   const parsedParams = paramsSchema.safeParse(rawParams);
+  addTiming("params", paramsStart);
   if (!parsedParams.success) {
-    return jsonError("Invalid match id", 400);
+    return withTiming(jsonError("Invalid match id", 400));
   }
 
+  const bodyStart = performance.now();
   const body = await parseBody(request, bodySchema);
+  addTiming("body_parse", bodyStart);
   if (!body.success) {
-    return body.response;
+    return withTiming(body.response);
   }
 
+  const submitStart = performance.now();
   const { data, error: rpcError } = await client.rpc("submit_turn", {
     p_match_id: parsedParams.data.matchId,
     p_round: body.data.round,
     p_action: body.data.action
   });
+  addTiming("submit_turn_rpc", submitStart);
 
   if (rpcError) {
     const msg = rpcError.message.toLowerCase();
@@ -49,18 +68,18 @@ export async function POST(request: Request, context: Context) {
       msg.includes("round resolving") ||
       msg.includes("resolving");
     if (benignTransition) {
-      return NextResponse.json(
+      return withTiming(NextResponse.json(
         { ok: true, skipped: true, reason: "round_transition" },
         { status: 201 },
-      );
+      ));
     }
-    return jsonError(rpcError.message, 400);
+    return withTiming(jsonError(rpcError.message, 400));
   }
 
   if (!data) {
-    return jsonError("Failed to submit turn", 400);
+    return withTiming(jsonError("Failed to submit turn", 400));
   }
 
-  return NextResponse.json(data, { status: 201 });
+  return withTiming(NextResponse.json(data, { status: 201 }));
 }
 

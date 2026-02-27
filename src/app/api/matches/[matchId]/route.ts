@@ -123,15 +123,30 @@ async function buildMatchResponse(
 }
 
 export async function POST(request: Request, context: Context) {
+  const timings: string[] = [];
+  const addTiming = (name: string, start: number) => {
+    timings.push(`${name};dur=${(performance.now() - start).toFixed(1)}`);
+  };
+  const withTiming = (response: NextResponse) => {
+    if (timings.length > 0) {
+      response.headers.set("Server-Timing", timings.join(", "));
+    }
+    return response;
+  };
+
+  const authStart = performance.now();
   const { error, client } = await getAuthedClient(request);
+  addTiming("auth", authStart);
   if (error || !client) {
-    return error ?? jsonError("Unauthorized", 401);
+    return withTiming(error ?? jsonError("Unauthorized", 401));
   }
 
+  const paramsStart = performance.now();
   const rawParams = await context.params;
   const parsedParams = paramsSchema.safeParse(rawParams);
+  addTiming("params", paramsStart);
   if (!parsedParams.success) {
-    return jsonError("Invalid match id", 400);
+    return withTiming(jsonError("Invalid match id", 400));
   }
   const { matchId } = parsedParams.data;
   const view = new URL(request.url).searchParams.get("view");
@@ -139,14 +154,17 @@ export async function POST(request: Request, context: Context) {
   const includeProfiles = view !== "live";
   const includePlayers = view !== "live";
 
+  const tickStart = performance.now();
   const { error: tickError } = await client.rpc("tick_match_round", {
     p_match_id: matchId
   });
+  addTiming("tick_round_rpc", tickStart);
   if (tickError) {
-    return jsonError(tickError.message, 400);
+    return withTiming(jsonError(tickError.message, 400));
   }
 
   // Single read with all fields ??used for both mutation logic and the final response
+  const matchSelectStart = performance.now();
   const { data: matchData, error: matchError } = await client
     .from("matches")
     .select(
@@ -154,12 +172,13 @@ export async function POST(request: Request, context: Context) {
     )
     .eq("id", matchId)
     .maybeSingle();
+  addTiming("matches_select", matchSelectStart);
 
   if (matchError) {
-    return jsonError(matchError.message, 400);
+    return withTiming(jsonError(matchError.message, 400));
   }
   if (!matchData) {
-    return jsonError("Match not found", 404);
+    return withTiming(jsonError("Match not found", 404));
   }
 
   let planningObstacles = (matchData.obstacles ?? []) as Coord[];
@@ -169,6 +188,7 @@ export async function POST(request: Request, context: Context) {
     matchData.board_state &&
     matchData.obstacles_turn !== matchData.current_turn
   ) {
+    const obstacleGenStart = performance.now();
     const p1 = matchData.board_state.p1 as Coord;
     const p2 = matchData.board_state.p2 as Coord;
     const chaserPos = matchData.attacker_slot === 1 ? p1 : p2;
@@ -188,6 +208,8 @@ export async function POST(request: Request, context: Context) {
     planningObstacles = obstacleArray;
 
     const admin = createAdminSupabase();
+    addTiming("obstacle_compute", obstacleGenStart);
+    const obstacleUpdateStart = performance.now();
     const { error: updateObstacleError } = await admin
       .from("matches")
       .update({
@@ -197,9 +219,10 @@ export async function POST(request: Request, context: Context) {
       .eq("id", matchId)
       .eq("current_turn", matchData.current_turn)
       .eq("phase", "planning");
+    addTiming("obstacle_update", obstacleUpdateStart);
 
     if (updateObstacleError) {
-      return jsonError(updateObstacleError.message, 400);
+      return withTiming(jsonError(updateObstacleError.message, 400));
     }
 
     // Reflect the write in the local object to avoid a redundant re-query
@@ -208,14 +231,16 @@ export async function POST(request: Request, context: Context) {
   }
 
   if (matchData.type === "ai" && matchData.status === "active" && matchData.phase === "planning") {
+    const aiTurnsStart = performance.now();
     const { data: currentTurns, error: turnsError } = await client
       .from("turns")
       .select("player_slot")
       .eq("match_id", matchId)
       .eq("turn_number", matchData.current_turn);
+    addTiming("ai_turns_select", aiTurnsStart);
 
     if (turnsError) {
-      return jsonError(turnsError.message, 400);
+      return withTiming(jsonError(turnsError.message, 400));
     }
 
     const botAlreadySubmitted = (currentTurns ?? []).some((t) => t.player_slot === 2);
@@ -235,11 +260,13 @@ export async function POST(request: Request, context: Context) {
 
       await sleep(10 + Math.floor(Math.random() * 31));
 
+      const aiSubmitStart = performance.now();
       const { error: botSubmitError } = await client.rpc("submit_bot_turn", {
         p_match_id: matchId,
         p_round: matchData.current_turn,
         p_action: { path }
       });
+      addTiming("ai_submit_rpc", aiSubmitStart);
 
       if (botSubmitError) {
         const msg = botSubmitError.message.toLowerCase();
@@ -248,29 +275,47 @@ export async function POST(request: Request, context: Context) {
           msg.includes("planning window closed") ||
           msg.includes("round is resolving");
         if (!ignorable) {
-          return jsonError(botSubmitError.message, 400);
+          return withTiming(jsonError(botSubmitError.message, 400));
         }
       }
     }
   }
 
-  return buildMatchResponse(matchData, matchId, client, {
+  const responseBuildStart = performance.now();
+  const response = await buildMatchResponse(matchData, matchId, client, {
     turnScope,
     includeProfiles,
     includePlayers
   });
+  addTiming("build_response", responseBuildStart);
+  return withTiming(response);
 }
 
 export async function GET(request: Request, context: Context) {
+  const timings: string[] = [];
+  const addTiming = (name: string, start: number) => {
+    timings.push(`${name};dur=${(performance.now() - start).toFixed(1)}`);
+  };
+  const withTiming = (response: NextResponse) => {
+    if (timings.length > 0) {
+      response.headers.set("Server-Timing", timings.join(", "));
+    }
+    return response;
+  };
+
+  const authStart = performance.now();
   const { error, client } = await getAuthedClient(request);
+  addTiming("auth", authStart);
   if (error || !client) {
-    return error ?? jsonError("Unauthorized", 401);
+    return withTiming(error ?? jsonError("Unauthorized", 401));
   }
 
+  const paramsStart = performance.now();
   const rawParams = await context.params;
   const parsedParams = paramsSchema.safeParse(rawParams);
+  addTiming("params", paramsStart);
   if (!parsedParams.success) {
-    return jsonError("Invalid match id", 400);
+    return withTiming(jsonError("Invalid match id", 400));
   }
   const { matchId } = parsedParams.data;
   const view = new URL(request.url).searchParams.get("view");
@@ -278,6 +323,7 @@ export async function GET(request: Request, context: Context) {
   const includeProfiles = view !== "live";
   const includePlayers = view !== "live";
 
+  const matchSelectStart = performance.now();
   const { data: matchData, error: matchError } = await client
     .from("matches")
     .select(
@@ -285,18 +331,22 @@ export async function GET(request: Request, context: Context) {
     )
     .eq("id", matchId)
     .maybeSingle();
+  addTiming("matches_select", matchSelectStart);
 
   if (matchError) {
-    return jsonError(matchError.message, 400);
+    return withTiming(jsonError(matchError.message, 400));
   }
   if (!matchData) {
-    return jsonError("Match not found", 404);
+    return withTiming(jsonError("Match not found", 404));
   }
 
-  return buildMatchResponse(matchData, matchId, client, {
+  const responseBuildStart = performance.now();
+  const response = await buildMatchResponse(matchData, matchId, client, {
     turnScope,
     includeProfiles,
     includePlayers
   });
+  addTiming("build_response", responseBuildStart);
+  return withTiming(response);
 }
 
