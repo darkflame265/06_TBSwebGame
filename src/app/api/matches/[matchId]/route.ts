@@ -3,8 +3,7 @@ import { NextResponse } from "next/server";
 export const preferredRegion = "icn1";
 import { z } from "zod";
 import { getAuthedClient, jsonError } from "@/lib/api";
-import { createAdminSupabase, createUserSupabaseFromRequest } from "@/lib/supabase/server";
-import { generateObstacles, seedForMatchRound, type Coord } from "@/lib/obstacles";
+import { createUserSupabaseFromRequest } from "@/lib/supabase/server";
 
 const paramsSchema = z.object({
   matchId: z.string().uuid()
@@ -178,52 +177,6 @@ export async function POST(request: Request, context: Context) {
   }
   if (!matchData) {
     return withTiming(jsonError("Match not found", 404));
-  }
-
-  if (
-    matchData.phase === "planning" &&
-    matchData.board_state &&
-    matchData.obstacles_turn !== matchData.current_turn
-  ) {
-    const obstacleGenStart = performance.now();
-    const p1 = matchData.board_state.p1 as Coord;
-    const p2 = matchData.board_state.p2 as Coord;
-    const chaserPos = matchData.attacker_slot === 1 ? p1 : p2;
-    const runnerPos = matchData.attacker_slot === 1 ? p2 : p1;
-    const seed = seedForMatchRound(matchId, matchData.current_turn);
-    const generated = generateObstacles({
-      gridSize: 5,
-      chaserPos,
-      runnerPos,
-      obstacleCount: 3,
-      seed
-    });
-    const obstacleArray = Array.from(generated).map((key) => {
-      const [x, y] = key.split(",").map(Number);
-      return [x, y] as [number, number];
-    });
-
-    const admin = createAdminSupabase();
-    addTiming("obstacle_compute", obstacleGenStart);
-    const obstacleUpdateStart = performance.now();
-    const { error: updateObstacleError } = await admin
-      .from("matches")
-      .update({
-        obstacles: obstacleArray,
-        obstacles_turn: matchData.current_turn
-      })
-      .eq("id", matchId)
-      .eq("current_turn", matchData.current_turn)
-      .eq("phase", "planning");
-    addTiming("obstacle_update", obstacleUpdateStart);
-
-    if (updateObstacleError) {
-      return withTiming(jsonError(updateObstacleError.message, 400));
-    }
-
-    // Reflect the write in the local object to avoid a redundant re-query
-    matchData.obstacles = obstacleArray;
-    matchData.obstacles_turn = matchData.current_turn;
   }
 
   const responseBuildStart = performance.now();
