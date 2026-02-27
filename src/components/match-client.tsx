@@ -238,7 +238,14 @@ export function MatchClient({ matchId }: Props) {
     try {
       const res = await ackMatchResolve(matchId, turn);
       if (res.snapshot) {
-        await queueApplyNetworkMatchData(res.snapshot, requestSeq);
+        // Fast-path: once planning snapshot arrives, apply immediately
+        // to reduce post-resolve idle perception.
+        if (res.snapshot.phase === "planning") {
+          latestAppliedNetworkSeqRef.current = requestSeq;
+          await applyMatchData(res.snapshot);
+        } else {
+          await queueApplyNetworkMatchData(res.snapshot, requestSeq);
+        }
         return;
       }
       // Fallback path when atomic snapshot is unavailable.
@@ -765,6 +772,8 @@ export function MatchClient({ matchId }: Props) {
         scheduleLoadMatch();
         return;
       }
+      const switchedToPlanning =
+        current.phase === "resolving" && row.phase === "planning";
       const next: MatchResponse = {
         ...current,
         ...row,
@@ -773,6 +782,10 @@ export function MatchClient({ matchId }: Props) {
       };
       latestAppliedNetworkSeqRef.current = nextNetworkRequestSeqRef.current;
       void applyMatchData(next);
+      if (switchedToPlanning) {
+        // Ensure obstacle/turn snapshot is refreshed immediately after transition.
+        scheduleLoadMatch(0);
+      }
     };
 
     const channel = supabase
