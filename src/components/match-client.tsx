@@ -233,6 +233,7 @@ export function MatchClient({ matchId }: Props) {
   const plannedPathRef = useRef<Coord[]>([]);
   const lockedPathRef = useRef<Coord[] | null>(null);
   const lastSyncTryAtRef = useRef(0);
+  const submitInFlightRef = useRef(false);
   const requestRematchRef = useRef<() => void>(() => {});
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
   const chatInputRef = useRef<HTMLInputElement | null>(null);
@@ -876,6 +877,8 @@ export function MatchClient({ matchId }: Props) {
   ) => {
     if (!match) return;
     if (!options?.force && !canPlan) return;
+    if (submitInFlightRef.current) return;
+    submitInFlightRef.current = true;
     try {
       await apiPost(`/api/matches/${matchId}/turns`, {
         round: match.current_turn,
@@ -893,11 +896,16 @@ export function MatchClient({ matchId }: Props) {
         lowerMsg.includes("match is not active") ||
         lowerMsg.includes("resolving");
       if (benignPhaseTransition) {
+        setPlanningLocked(false);
+        lockedPathRef.current = null;
+        lastSyncTryAtRef.current = 0;
         setMessage(null);
         await loadMatch();
         return;
       }
       setMessage(msg);
+    } finally {
+      submitInFlightRef.current = false;
     }
   };
 
