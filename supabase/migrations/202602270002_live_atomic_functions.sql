@@ -219,7 +219,7 @@ begin
   v_match := public.ack_resolve(p_match_id, p_turn);
   v_match := public.tick_match_round(p_match_id);
   v_match := public.ensure_planning_obstacles(p_match_id);
-  return to_jsonb(v_match);
+  return public.get_match_live_snapshot(p_match_id, 'current');
 end;
 $$;
 
@@ -295,4 +295,3 @@ revoke execute on function public.submit_turn_and_get_ai_context(uuid, integer, 
 grant execute on function public.submit_turn_and_get_ai_context(uuid, integer, jsonb) to authenticated;
 
 commit;
-

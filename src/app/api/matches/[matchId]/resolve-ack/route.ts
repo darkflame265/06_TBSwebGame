@@ -28,6 +28,11 @@ export async function POST(request: Request, context: Context) {
     }
     return response;
   };
+  const hasTurnsArray = (value: unknown): value is { turns: unknown[] } =>
+    typeof value === "object" &&
+    value !== null &&
+    "turns" in value &&
+    Array.isArray((value as { turns: unknown }).turns);
 
   const authStart = performance.now();
   const { error, client } = await getAuthedClient(request);
@@ -62,6 +67,27 @@ export async function POST(request: Request, context: Context) {
   addTiming("ack_resolve_atomic_rpc", atomicStart);
 
   if (!atomicError && atomicData) {
+    if (hasTurnsArray(atomicData)) {
+      return withTiming(
+        NextResponse.json({ ok: true, ticked: true, atomic: true, snapshot: atomicData }),
+      );
+    }
+
+    const liveStart = performance.now();
+    const { data: liveData, error: liveError } = await client.rpc(
+      "get_match_live_snapshot",
+      {
+        p_match_id: parsedParams.data.matchId,
+        p_turn_scope: "current",
+      },
+    );
+    addTiming("get_live_snapshot_rpc", liveStart);
+    if (!liveError && hasTurnsArray(liveData)) {
+      return withTiming(
+        NextResponse.json({ ok: true, ticked: true, atomic: true, snapshot: liveData }),
+      );
+    }
+
     return withTiming(
       NextResponse.json({ ok: true, ticked: true, atomic: true, snapshot: atomicData }),
     );

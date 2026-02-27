@@ -370,8 +370,9 @@ export function MatchClient({ matchId }: Props) {
   const applyMatchData = async (data: MatchLiveResponse) => {
     const prev = prevMatchRef.current;
     const hydratedData: MatchResponse = {
-      ...(data as Omit<MatchResponse, "players">),
+      ...(data as Omit<MatchResponse, "players" | "turns">),
       players: data.players ?? prev?.players ?? [],
+      turns: Array.isArray(data.turns) ? data.turns : prev?.turns ?? [],
     };
     const nextBoard = hydratedData.board_state ?? DEFAULT_BOARD;
 
