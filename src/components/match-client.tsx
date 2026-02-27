@@ -126,6 +126,8 @@ export function MatchClient({ matchId }: Props) {
   const matchRef = useRef<MatchResponse | null>(null);
   const loadMatchPromiseRef = useRef<Promise<void> | null>(null);
   const loadMatchQueuedRef = useRef(false);
+  const tickInFlightRef = useRef(false);
+  const lastTickAtRef = useRef(0);
   const boardClusterHostRef = useRef<HTMLDivElement | null>(null);
   const [boardHostWidth, setBoardHostWidth] = useState(0);
 
@@ -476,11 +478,18 @@ export function MatchClient({ matchId }: Props) {
   };
 
   const tickMatch = async () => {
+    const now = Date.now();
+    if (tickInFlightRef.current) return;
+    if (now - lastTickAtRef.current < 300) return;
+    tickInFlightRef.current = true;
+    lastTickAtRef.current = now;
     try {
       const data = await tickMatchApi(matchId);
       await applyMatchData(data);
     } catch {
       // tick is best-effort; realtime/read refresh keeps state fresh
+    } finally {
+      tickInFlightRef.current = false;
     }
   };
 
@@ -717,6 +726,7 @@ export function MatchClient({ matchId }: Props) {
             created_by: row.created_by,
             created_at: row.created_at,
           });
+          scheduleLoadMatch();
         },
       )
       .on(
@@ -749,6 +759,7 @@ export function MatchClient({ matchId }: Props) {
             created_by: row.created_by,
             created_at: row.created_at,
           });
+          scheduleLoadMatch();
         },
       )
       .on(
@@ -771,6 +782,7 @@ export function MatchClient({ matchId }: Props) {
             return;
           }
           patchMatchRow(row);
+          scheduleLoadMatch();
         },
       )
       .on(

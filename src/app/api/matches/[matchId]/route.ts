@@ -29,7 +29,7 @@ async function buildMatchResponse(
   matchData: MatchRow,
   matchId: string,
   client: SupabaseClient,
-  options?: { turnScope?: "all" | "current" }
+  options?: { turnScope?: "all" | "current"; includeProfiles?: boolean }
 ): Promise<NextResponse> {
   const currentTurn =
     typeof matchData.current_turn === "number" ? matchData.current_turn : null;
@@ -66,7 +66,7 @@ async function buildMatchResponse(
   const nicknameMap = new Map<string, string | null>();
   const statsMap = new Map<string, { wins: number; losses: number; win_rate: number }>();
 
-  if (playerIds.length > 0) {
+  if (options?.includeProfiles !== false && playerIds.length > 0) {
     const { data: profileRows, error: profilesError } = await client
       .from("user_profiles")
       .select("user_id,nickname")
@@ -126,6 +126,7 @@ export async function POST(request: Request, context: Context) {
   const { matchId } = parsedParams.data;
   const view = new URL(request.url).searchParams.get("view");
   const turnScope = view === "live" ? "current" : "all";
+  const includeProfiles = view !== "live";
 
   const { error: tickError } = await client.rpc("tick_match_round", {
     p_match_id: matchId
@@ -242,7 +243,7 @@ export async function POST(request: Request, context: Context) {
     }
   }
 
-  return buildMatchResponse(matchData, matchId, client, { turnScope });
+  return buildMatchResponse(matchData, matchId, client, { turnScope, includeProfiles });
 }
 
 export async function GET(request: Request, context: Context) {
@@ -259,6 +260,7 @@ export async function GET(request: Request, context: Context) {
   const { matchId } = parsedParams.data;
   const view = new URL(request.url).searchParams.get("view");
   const turnScope = view === "live" ? "current" : "all";
+  const includeProfiles = view !== "live";
 
   const { data: matchData, error: matchError } = await client
     .from("matches")
@@ -275,6 +277,6 @@ export async function GET(request: Request, context: Context) {
     return jsonError("Match not found", 404);
   }
 
-  return buildMatchResponse(matchData, matchId, client, { turnScope });
+  return buildMatchResponse(matchData, matchId, client, { turnScope, includeProfiles });
 }
 
