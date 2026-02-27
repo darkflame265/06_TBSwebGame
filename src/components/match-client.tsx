@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getBrowserSupabaseClient } from "@/lib/supabase/browser";
-import type { MatchResponse } from "@/types/api";
+import type { MatchLiveResponse, MatchResponse } from "@/types/api";
 import {
   AI_PREVIEW_PATH_MS,
   AI_STEP_ANIMATION_MS,
@@ -359,67 +359,75 @@ export function MatchClient({ matchId }: Props) {
     }
   };
 
-  const applyMatchData = async (data: MatchResponse) => {
-    const nextBoard = data.board_state ?? DEFAULT_BOARD;
+  const applyMatchData = async (data: MatchLiveResponse) => {
     const prev = prevMatchRef.current;
+    const hydratedData: MatchResponse = {
+      ...(data as Omit<MatchResponse, "players">),
+      players: data.players ?? prev?.players ?? [],
+    };
+    const nextBoard = hydratedData.board_state ?? DEFAULT_BOARD;
 
-    if (data.status !== "finished" && resultReady) {
+    if (hydratedData.status !== "finished" && resultReady) {
       setResultReady(false);
     }
 
     if (!prev) {
       setDisplayBoard(nextBoard);
-      setDisplayHp({ p1: data.p1_hp, p2: data.p2_hp });
+      setDisplayHp({ p1: hydratedData.p1_hp, p2: hydratedData.p2_hp });
       setExplodedSlot(null);
     } else if (
-      data.phase === "resolving" &&
-      data.resolved_paths &&
-      animatedTurnRef.current !== data.resolved_paths.turn &&
+      hydratedData.phase === "resolving" &&
+      hydratedData.resolved_paths &&
+      animatedTurnRef.current !== hydratedData.resolved_paths.turn &&
       !animatingRef.current
     ) {
-      const start = data.resolved_paths.start;
+      const start = hydratedData.resolved_paths.start;
       const collisionAt =
-        data.resolved_paths.collision_at ??
+        hydratedData.resolved_paths.collision_at ??
         deriveCollisionAt(
           { p1: start.p1, p2: start.p2 },
-          data.resolved_paths.p1,
-          data.resolved_paths.p2,
+          hydratedData.resolved_paths.p1,
+          hydratedData.resolved_paths.p2,
         );
       await animateResolvedRound(
         { p1: start.p1, p2: start.p2 },
-        data.resolved_paths.p1,
-        data.resolved_paths.p2,
+        hydratedData.resolved_paths.p1,
+        hydratedData.resolved_paths.p2,
         {
-          collision: !!data.resolved_paths.collision,
-          hitSlot: data.resolved_paths.hit_slot ?? null,
+          collision: !!hydratedData.resolved_paths.collision,
+          hitSlot: hydratedData.resolved_paths.hit_slot ?? null,
           collisionAt,
-          collisionStep: data.resolved_paths.collision_step ?? null,
-          collisionT: data.resolved_paths.collision_t ?? null,
+          collisionStep: hydratedData.resolved_paths.collision_step ?? null,
+          collisionT: hydratedData.resolved_paths.collision_t ?? null,
         },
-        data.resolved_paths.turn,
-        data.status === "finished",
-        data.type === "ai",
+        hydratedData.resolved_paths.turn,
+        hydratedData.status === "finished",
+        hydratedData.type === "ai",
       );
-      animatedTurnRef.current = data.resolved_paths.turn;
+      animatedTurnRef.current = hydratedData.resolved_paths.turn;
     } else if (!animatingRef.current) {
       setDisplayBoard(nextBoard);
-      setDisplayHp({ p1: data.p1_hp, p2: data.p2_hp });
+      setDisplayHp({ p1: hydratedData.p1_hp, p2: hydratedData.p2_hp });
     }
 
     const hasPendingResolveAnimation =
-      data.phase === "resolving" &&
-      !!data.resolved_paths &&
-      animatedTurnRef.current !== data.resolved_paths.turn;
+      hydratedData.phase === "resolving" &&
+      !!hydratedData.resolved_paths &&
+      animatedTurnRef.current !== hydratedData.resolved_paths.turn;
 
     if (
-      data.status === "finished" &&
+      hydratedData.status === "finished" &&
       !hasPendingResolveAnimation &&
       !animatingRef.current
     ) {
       setResultReady(true);
     }
 
-    if (prev && prev.phase === "resolving" && data.phase === "planning") {
+    if (
+      prev &&
+      prev.phase === "resolving" &&
+      hydratedData.phase === "planning"
+    ) {
       if (!animatingRef.current) {
         setResolvedOverlay(null);
       }
@@ -431,7 +439,7 @@ export function MatchClient({ matchId }: Props) {
       autoSubmittedRoundRef.current = null;
       ackedResolveTurnRef.current = null;
     }
-    if (prev && data.current_turn !== prev.current_turn) {
+    if (prev && hydratedData.current_turn !== prev.current_turn) {
       if (!animatingRef.current) {
         setResolvedOverlay(null);
       }
@@ -445,9 +453,9 @@ export function MatchClient({ matchId }: Props) {
       setExplodedSlot(null);
     }
 
-    prevMatchRef.current = data;
-    matchRef.current = data;
-    setMatch(data);
+    prevMatchRef.current = hydratedData;
+    matchRef.current = hydratedData;
+    setMatch(hydratedData);
   };
 
   const loadMatch = async () => {
@@ -583,7 +591,9 @@ export function MatchClient({ matchId }: Props) {
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setMe(data.user?.id ?? null));
-    loadMatch();
+    void fetchMatch(matchId, { live: false }).then(applyMatchData).catch(() => {
+      void loadMatch();
+    });
     loadChat();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchId]);
@@ -738,7 +748,6 @@ export function MatchClient({ matchId }: Props) {
             created_by: row.created_by,
             created_at: row.created_at,
           });
-          scheduleLoadMatch();
         },
       )
       .on(
@@ -771,7 +780,6 @@ export function MatchClient({ matchId }: Props) {
             created_by: row.created_by,
             created_at: row.created_at,
           });
-          scheduleLoadMatch();
         },
       )
       .on(
@@ -794,7 +802,7 @@ export function MatchClient({ matchId }: Props) {
             return;
           }
           patchMatchRow(row);
-          scheduleLoadMatch();
+          scheduleLoadMatch(500);
         },
       )
       .on(

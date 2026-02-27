@@ -61,6 +61,10 @@ export type MatchResponse = {
   }>;
 };
 
+export type MatchLiveResponse = Omit<MatchResponse, "players"> & {
+  players?: MatchResponse["players"];
+};
+
 export type MatchChatMessage = {
   id: number;
   match_id: string;

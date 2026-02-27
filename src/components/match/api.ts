@@ -1,5 +1,5 @@
 import { apiGet, apiPost } from "@/lib/client-api";
-import type { MatchChatMessage, MatchResponse } from "@/types/api";
+import type { MatchChatMessage, MatchLiveResponse } from "@/types/api";
 import type { Coord } from "@/components/match/types";
 
 type CreateAiMatchResponse = {
@@ -11,8 +11,13 @@ type RequestRematchResponse = {
   match_id?: string;
 };
 
-export async function fetchMatch(matchId: string) {
-  return apiGet<MatchResponse>(`/api/matches/${matchId}?view=live`);
+export async function fetchMatch(
+  matchId: string,
+  options?: { live?: boolean },
+) {
+  const isLive = options?.live ?? true;
+  const query = isLive ? "?view=live" : "";
+  return apiGet<MatchLiveResponse>(`/api/matches/${matchId}${query}`);
 }
 
 export async function ackMatchResolve(matchId: string, turn: number) {
@@ -20,7 +25,7 @@ export async function ackMatchResolve(matchId: string, turn: number) {
 }
 
 export async function tickMatch(matchId: string) {
-  return apiPost<MatchResponse>(`/api/matches/${matchId}?view=live`);
+  return apiPost<MatchLiveResponse>(`/api/matches/${matchId}?view=live`);
 }
 
 export async function fetchMatchChat(matchId: string) {
