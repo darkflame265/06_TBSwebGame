@@ -124,6 +124,8 @@ export function MatchClient({ matchId }: Props) {
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
   const chatInputRef = useRef<HTMLInputElement | null>(null);
   const matchRef = useRef<MatchResponse | null>(null);
+  const loadMatchPromiseRef = useRef<Promise<void> | null>(null);
+  const loadMatchQueuedRef = useRef(false);
   const boardClusterHostRef = useRef<HTMLDivElement | null>(null);
   const [boardHostWidth, setBoardHostWidth] = useState(0);
 
@@ -353,6 +355,13 @@ export function MatchClient({ matchId }: Props) {
   };
 
   const loadMatch = async () => {
+    if (loadMatchPromiseRef.current) {
+      loadMatchQueuedRef.current = true;
+      await loadMatchPromiseRef.current;
+      return;
+    }
+
+    const task = (async () => {
     try {
       const data = await fetchMatch(matchId);
       const nextBoard = data.board_state ?? DEFAULT_BOARD;
@@ -447,6 +456,18 @@ export function MatchClient({ matchId }: Props) {
       setMessage(
         error instanceof Error ? error.message : "Failed to load match",
       );
+    }
+    })();
+
+    loadMatchPromiseRef.current = task;
+    try {
+      await task;
+    } finally {
+      loadMatchPromiseRef.current = null;
+      if (loadMatchQueuedRef.current) {
+        loadMatchQueuedRef.current = false;
+        void loadMatch();
+      }
     }
   };
 
@@ -566,20 +587,45 @@ export function MatchClient({ matchId }: Props) {
   }, []);
 
   useEffect(() => {
-    // Tick interval: drives game phase progression and AI bot moves.
-    // Realtime handles state delivery; this only needs to fire often enough
-    // to ensure timer-based transitions happen within ~3 s of the deadline.
-    if (match?.status !== "active") return;
-    const tick = setInterval(() => void tickMatch(), 3000);
-    return () => clearInterval(tick);
+    if (!match || match.status !== "active") return;
+    const deadlineIso =
+      match.phase === "planning"
+        ? match.planning_ends_at
+        : match.resolution_ends_at;
+    if (!deadlineIso) return;
+    const deadlineMs = Date.parse(deadlineIso);
+    if (!Number.isFinite(deadlineMs)) return;
+
+    // Trigger exactly around phase deadline instead of polling.
+    const delayMs = Math.max(0, deadlineMs - Date.now() + 25);
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        await tickMatch();
+        await loadMatch();
+      })();
+    }, delayMs);
+    return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [matchId, match?.status]);
+  }, [
+    matchId,
+    match?.status,
+    match?.phase,
+    match?.planning_ends_at,
+    match?.resolution_ends_at,
+  ]);
 
   useEffect(() => {
-    // Fallback read poll: guards against Realtime connection failures.
-    // Under normal conditions Realtime drives state; this is a safety net.
-    const fallback = setInterval(() => void loadMatch(), 10000);
-    return () => clearInterval(fallback);
+    const refreshOnReturn = () => {
+      if (document.visibilityState !== "visible") return;
+      void loadMatch();
+    };
+
+    window.addEventListener("focus", refreshOnReturn);
+    document.addEventListener("visibilitychange", refreshOnReturn);
+    return () => {
+      window.removeEventListener("focus", refreshOnReturn);
+      document.removeEventListener("visibilitychange", refreshOnReturn);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchId]);
 
@@ -1204,6 +1250,8 @@ export function MatchClient({ matchId }: Props) {
     : "";
   const showResolvedPaths =
     !!resolvedOverlay && (match.phase === "resolving" || animating);
+  const displayPhase: "planning" | "resolving" =
+    animating || resolvedOverlay ? "resolving" : match.phase;
 
   const p1Px = coordToPx(displayBoard.p1, boardCellSize, CELL_GAP);
   const p2Px = coordToPx(displayBoard.p2, boardCellSize, CELL_GAP);
@@ -1234,7 +1282,7 @@ return (
       darkMode={darkMode}
       matchId={match.id}
       status={match.status}
-      phase={match.phase}
+      phase={displayPhase}
       currentTurn={match.current_turn}
       myColor={myColor}
       myRole={myRole}
