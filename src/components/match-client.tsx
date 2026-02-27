@@ -112,6 +112,7 @@ export function MatchClient({ matchId }: Props) {
   const animatedTurnRef = useRef<number | null>(null);
   const autoSubmittedRoundRef = useRef<number | null>(null);
   const ackedResolveTurnRef = useRef<number | null>(null);
+  const ackResolveInFlightTurnsRef = useRef<Set<number>>(new Set());
   const latestMillisLeftRef = useRef(0);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const plannedPathRef = useRef<Coord[]>([]);
@@ -243,6 +244,16 @@ export function MatchClient({ matchId }: Props) {
     }
   };
 
+  const requestAckResolve = (turn: number) => {
+    if (ackedResolveTurnRef.current === turn) return;
+    if (ackResolveInFlightTurnsRef.current.has(turn)) return;
+    ackedResolveTurnRef.current = turn;
+    ackResolveInFlightTurnsRef.current.add(turn);
+    void ackResolve(turn).finally(() => {
+      ackResolveInFlightTurnsRef.current.delete(turn);
+    });
+  };
+
   const animateResolvedRound = async (
     start: DisplayBoard,
     p1Path: Coord[],
@@ -361,10 +372,7 @@ export function MatchClient({ matchId }: Props) {
     setAnimating(false);
     animatingRef.current = false;
     setFrozenTimerMs(null);
-    if (ackedResolveTurnRef.current !== turn) {
-      ackedResolveTurnRef.current = turn;
-      void ackResolve(turn);
-    }
+    requestAckResolve(turn);
   };
 
   const applyMatchData = async (data: MatchLiveResponse) => {
@@ -447,6 +455,7 @@ export function MatchClient({ matchId }: Props) {
       setDraggingPath(false);
       autoSubmittedRoundRef.current = null;
       ackedResolveTurnRef.current = null;
+      ackResolveInFlightTurnsRef.current.clear();
     }
     if (prev && hydratedData.current_turn !== prev.current_turn) {
       if (!animatingRef.current) {
@@ -459,6 +468,7 @@ export function MatchClient({ matchId }: Props) {
       setDraggingPath(false);
       autoSubmittedRoundRef.current = null;
       ackedResolveTurnRef.current = null;
+      ackResolveInFlightTurnsRef.current.clear();
       setExplodedSlot(null);
     }
 
@@ -1036,9 +1046,7 @@ export function MatchClient({ matchId }: Props) {
     if (!match.resolved_paths) return;
     if (animatingRef.current) return;
     const turn = match.resolved_paths.turn;
-    if (ackedResolveTurnRef.current === turn) return;
-    ackedResolveTurnRef.current = turn;
-    void ackResolve(turn);
+    requestAckResolve(turn);
   }, [match?.status, match?.phase, match?.resolved_paths]);
 
   useEffect(() => {
