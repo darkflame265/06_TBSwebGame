@@ -231,6 +231,18 @@ export async function POST(request: Request, context: Context) {
     return withTiming(jsonError("Match not found", 404));
   }
 
+  if (view === "live") {
+    const obstacleStart = performance.now();
+    const obstacleResult = await ensurePlanningObstaclesForSnapshot(
+      matchData as MatchRow,
+      matchId,
+    );
+    addTiming("ensure_obstacles_post", obstacleStart);
+    if (obstacleResult.error) {
+      return withTiming(jsonError(obstacleResult.error, 400));
+    }
+  }
+
   const responseBuildStart = performance.now();
   const response = await buildMatchResponse(matchData, matchId, client, {
     turnScope,
