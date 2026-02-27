@@ -204,6 +204,27 @@ export async function POST(request: Request, context: Context) {
   const includeProfiles = view !== "live";
   const includePlayers = view !== "live";
 
+  if (view === "live") {
+    const liveRpcStart = performance.now();
+    const { data: liveSnapshot, error: liveRpcError } = await client.rpc(
+      "tick_match_live_snapshot",
+      {
+        p_match_id: matchId,
+        p_turn_scope: turnScope,
+      },
+    );
+    addTiming("tick_live_snapshot_rpc", liveRpcStart);
+
+    if (!liveRpcError && liveSnapshot) {
+      return withTiming(NextResponse.json(liveSnapshot));
+    }
+    // Fallback to legacy path when migration isn't applied yet.
+    if (!liveRpcError) {
+      return withTiming(jsonError("Failed to load live snapshot", 400));
+    }
+    addTiming("tick_live_snapshot_fallback", liveRpcStart);
+  }
+
   const tickStart = performance.now();
   const { error: tickError } = await client.rpc("tick_match_round", {
     p_match_id: matchId
