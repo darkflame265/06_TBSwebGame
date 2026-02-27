@@ -1,18 +1,20 @@
 import { createAdminSupabase } from "@/lib/supabase/server";
 import { generateObstacles, seedForMatchRound, type Coord } from "@/lib/obstacles";
 
-type ReadClient = {
-  from: (table: string) => {
+type MatchObstacleSnapshot = {
+  phase: "planning" | "resolving";
+  current_turn: number;
+  board_state: { p1: Coord; p2: Coord } | null;
+  obstacles_turn: number | null;
+  attacker_slot: 1 | 2 | null;
+};
+
+export type PlanningObstacleClient = {
+  from: (table: "matches") => {
     select: (columns: string) => {
-      eq: (column: string, value: unknown) => {
+      eq: (column: "id", value: string) => {
         maybeSingle: () => Promise<{
-          data: {
-            phase: "planning" | "resolving";
-            current_turn: number;
-            board_state: { p1: Coord; p2: Coord } | null;
-            obstacles_turn: number | null;
-            attacker_slot: 1 | 2 | null;
-          } | null;
+          data: unknown;
           error: { message: string } | null;
         }>;
       };
@@ -21,14 +23,15 @@ type ReadClient = {
 };
 
 export async function ensurePlanningObstaclesReady(
-  client: ReadClient,
+  client: PlanningObstacleClient,
   matchId: string,
 ): Promise<string | null> {
-  const { data: matchData, error: matchError } = await client
+  const { data, error: matchError } = await client
     .from("matches")
     .select("phase,current_turn,board_state,obstacles_turn,attacker_slot")
     .eq("id", matchId)
     .maybeSingle();
+  const matchData = data as MatchObstacleSnapshot | null;
 
   if (matchError) return matchError.message;
   if (!matchData) return null;

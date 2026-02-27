@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getAuthedUser, jsonError, parseBody } from "@/lib/api";
-import { ensurePlanningObstaclesReady } from "@/lib/match-obstacles";
+import {
+  ensurePlanningObstaclesReady,
+  type PlanningObstacleClient,
+} from "@/lib/match-obstacles";
 
 const schema = z.object({
   roomCode: z.string().min(4).max(16)
@@ -26,7 +29,10 @@ export async function POST(request: Request) {
     return jsonError(rpcError?.message ?? "Failed to join room", 400);
   }
   const matchId = data[0].match_id as string;
-  const obstacleError = await ensurePlanningObstaclesReady(client, matchId);
+  const obstacleError = await ensurePlanningObstaclesReady(
+    client as unknown as PlanningObstacleClient,
+    matchId,
+  );
   if (obstacleError) {
     return jsonError(obstacleError, 400);
   }

@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getAuthedUser, jsonError, parseBody } from "@/lib/api";
-import { ensurePlanningObstaclesReady } from "@/lib/match-obstacles";
+import {
+  ensurePlanningObstaclesReady,
+  type PlanningObstacleClient,
+} from "@/lib/match-obstacles";
 
 const schema = z.object({
   ticketId: z.string().uuid().optional()
@@ -34,7 +37,10 @@ export async function POST(request: Request) {
     typeof (data as { match_id?: unknown }).match_id === "string"
   ) {
     const matchId = (data as { match_id: string }).match_id;
-    const obstacleError = await ensurePlanningObstaclesReady(client, matchId);
+    const obstacleError = await ensurePlanningObstaclesReady(
+      client as unknown as PlanningObstacleClient,
+      matchId,
+    );
     if (obstacleError) {
       return jsonError(obstacleError, 400);
     }

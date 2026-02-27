@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getAuthedUser, jsonError, parseBody } from "@/lib/api";
-import { ensurePlanningObstaclesReady } from "@/lib/match-obstacles";
+import {
+  ensurePlanningObstaclesReady,
+  type PlanningObstacleClient,
+} from "@/lib/match-obstacles";
 
 const paramsSchema = z.object({
   matchId: z.string().uuid()
@@ -46,7 +49,7 @@ export async function POST(request: Request, context: Context) {
   }
 
   const obstacleError = await ensurePlanningObstaclesReady(
-    client,
+    client as unknown as PlanningObstacleClient,
     parsedParams.data.matchId,
   );
   if (obstacleError) {

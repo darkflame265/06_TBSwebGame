@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { getAuthedUser, jsonError } from "@/lib/api";
-import { ensurePlanningObstaclesReady } from "@/lib/match-obstacles";
+import {
+  ensurePlanningObstaclesReady,
+  type PlanningObstacleClient,
+} from "@/lib/match-obstacles";
 
 export async function POST(request: Request) {
   const { error, client } = await getAuthedUser(request);
@@ -13,7 +16,10 @@ export async function POST(request: Request) {
     return jsonError(rpcError?.message ?? "Failed to create AI match", 400);
   }
   const matchId = data[0].match_id as string;
-  const obstacleError = await ensurePlanningObstaclesReady(client, matchId);
+  const obstacleError = await ensurePlanningObstaclesReady(
+    client as unknown as PlanningObstacleClient,
+    matchId,
+  );
   if (obstacleError) {
     return jsonError(obstacleError, 400);
   }
