@@ -134,6 +134,9 @@ export function MatchClient({ matchId }: Props) {
   const lastLoadMatchAtRef = useRef(0);
   const tickInFlightRef = useRef(false);
   const lastTickAtRef = useRef(0);
+  const nextNetworkRequestSeqRef = useRef(0);
+  const latestAppliedNetworkSeqRef = useRef(0);
+  const networkApplyQueueRef = useRef<Promise<void>>(Promise.resolve());
   const boardClusterHostRef = useRef<HTMLDivElement | null>(null);
   const [boardHostWidth, setBoardHostWidth] = useState(0);
 
@@ -231,10 +234,11 @@ export function MatchClient({ matchId }: Props) {
   };
 
   const ackResolve = async (turn: number) => {
+    const requestSeq = ++nextNetworkRequestSeqRef.current;
     try {
       const res = await ackMatchResolve(matchId, turn);
       if (res.snapshot) {
-        await applyMatchData(res.snapshot);
+        await queueApplyNetworkMatchData(res.snapshot, requestSeq);
         return;
       }
       // Fallback path when atomic snapshot is unavailable.
@@ -252,6 +256,18 @@ export function MatchClient({ matchId }: Props) {
     void ackResolve(turn).finally(() => {
       ackResolveInFlightTurnsRef.current.delete(turn);
     });
+  };
+
+  const queueApplyNetworkMatchData = async (
+    data: MatchLiveResponse,
+    requestSeq: number,
+  ) => {
+    networkApplyQueueRef.current = networkApplyQueueRef.current.then(async () => {
+      if (requestSeq < latestAppliedNetworkSeqRef.current) return;
+      latestAppliedNetworkSeqRef.current = requestSeq;
+      await applyMatchData(data);
+    });
+    await networkApplyQueueRef.current;
   };
 
   const animateResolvedRound = async (
@@ -478,6 +494,7 @@ export function MatchClient({ matchId }: Props) {
   };
 
   const loadMatch = async () => {
+    const requestSeq = ++nextNetworkRequestSeqRef.current;
     if (loadMatchPromiseRef.current) {
       loadMatchQueuedRef.current = true;
       await loadMatchPromiseRef.current;
@@ -487,7 +504,7 @@ export function MatchClient({ matchId }: Props) {
     const task = (async () => {
     try {
       const data = await fetchMatch(matchId);
-      await applyMatchData(data);
+      await queueApplyNetworkMatchData(data, requestSeq);
       lastLoadMatchAtRef.current = Date.now();
     } catch (error) {
       setMessage(
@@ -509,6 +526,7 @@ export function MatchClient({ matchId }: Props) {
   };
 
   const tickMatch = async () => {
+    const requestSeq = ++nextNetworkRequestSeqRef.current;
     const now = Date.now();
     if (tickInFlightRef.current) return;
     if (now - lastTickAtRef.current < 300) return;
@@ -516,7 +534,7 @@ export function MatchClient({ matchId }: Props) {
     lastTickAtRef.current = now;
     try {
       const data = await tickMatchApi(matchId);
-      await applyMatchData(data);
+      await queueApplyNetworkMatchData(data, requestSeq);
     } catch {
       // tick is best-effort; realtime/read refresh keeps state fresh
     } finally {
@@ -625,9 +643,12 @@ export function MatchClient({ matchId }: Props) {
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setMe(data.user?.id ?? null));
-    void fetchMatch(matchId, { live: false }).then(applyMatchData).catch(() => {
-      void loadMatch();
-    });
+    const requestSeq = ++nextNetworkRequestSeqRef.current;
+    void fetchMatch(matchId, { live: false })
+      .then((data) => queueApplyNetworkMatchData(data, requestSeq))
+      .catch(() => {
+        void loadMatch();
+      });
     loadChat();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchId]);
@@ -732,6 +753,7 @@ export function MatchClient({ matchId }: Props) {
         return a.player_slot - b.player_slot;
       });
       const next: MatchResponse = { ...current, turns };
+      latestAppliedNetworkSeqRef.current = nextNetworkRequestSeqRef.current;
       matchRef.current = next;
       prevMatchRef.current = next;
       setMatch(next);
@@ -749,6 +771,7 @@ export function MatchClient({ matchId }: Props) {
         players: current.players,
         turns: current.turns,
       };
+      latestAppliedNetworkSeqRef.current = nextNetworkRequestSeqRef.current;
       void applyMatchData(next);
     };
 
