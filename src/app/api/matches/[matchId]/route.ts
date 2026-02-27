@@ -218,11 +218,34 @@ export async function POST(request: Request, context: Context) {
     if (!liveRpcError && liveSnapshot) {
       return withTiming(NextResponse.json(liveSnapshot));
     }
-    // Fallback to legacy path when migration isn't applied yet.
-    if (!liveRpcError) {
+    addTiming("tick_live_snapshot_fallback", liveRpcStart);
+
+    // Lightweight fallback: tick -> live snapshot RPC.
+    const tickStart = performance.now();
+    const { error: tickError } = await client.rpc("tick_match_round", {
+      p_match_id: matchId,
+    });
+    addTiming("tick_round_rpc", tickStart);
+    if (tickError) {
+      return withTiming(jsonError(tickError.message, 400));
+    }
+
+    const liveReadStart = performance.now();
+    const { data: liveReadSnapshot, error: liveReadError } = await client.rpc(
+      "get_match_live_snapshot",
+      {
+        p_match_id: matchId,
+        p_turn_scope: "current",
+      },
+    );
+    addTiming("get_live_snapshot_rpc", liveReadStart);
+    if (liveReadError) {
+      return withTiming(jsonError(liveReadError.message, 400));
+    }
+    if (!liveReadSnapshot) {
       return withTiming(jsonError("Failed to load live snapshot", 400));
     }
-    addTiming("tick_live_snapshot_fallback", liveRpcStart);
+    return withTiming(NextResponse.json(liveReadSnapshot));
   }
 
   const tickStart = performance.now();
@@ -320,11 +343,10 @@ export async function GET(request: Request, context: Context) {
     if (!liveError && liveSnapshot) {
       return withTiming(NextResponse.json(liveSnapshot));
     }
-    if (liveError) {
-      addTiming("get_live_snapshot_fallback", liveReadStart);
-    } else {
-      return withTiming(jsonError("Failed to load live snapshot", 400));
-    }
+    addTiming("get_live_snapshot_fallback", liveReadStart);
+    return withTiming(
+      jsonError(liveError?.message ?? "Failed to load live snapshot", 400),
+    );
   }
 
   const matchSelectStart = performance.now();
