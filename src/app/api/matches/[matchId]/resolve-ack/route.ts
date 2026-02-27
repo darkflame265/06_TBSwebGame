@@ -46,6 +46,23 @@ export async function POST(request: Request, context: Context) {
     return jsonError(rpcError.message, 400);
   }
 
-  return NextResponse.json({ ok: true });
+  // Best effort: advance phase immediately after ack to reduce perceived idle gap.
+  const { error: tickError } = await client.rpc("tick_match_round", {
+    p_match_id: parsedParams.data.matchId,
+  });
+  if (tickError) {
+    const msg = tickError.message.toLowerCase();
+    const ignorable =
+      msg.includes("stale round") ||
+      msg.includes("not active") ||
+      msg.includes("already") ||
+      msg.includes("resolving") ||
+      msg.includes("planning");
+    if (!ignorable) {
+      return NextResponse.json({ ok: true, ticked: false });
+    }
+  }
+
+  return NextResponse.json({ ok: true, ticked: true });
 }
 
