@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 export const preferredRegion = "icn1";
 import { z } from "zod";
-import { getAuthedUser, jsonError, parseBody } from "@/lib/api";
+import { getAuthedClient, jsonError, parseBody } from "@/lib/api";
 import {
   ensurePlanningObstaclesReady,
   type PlanningObstacleClient,
@@ -21,7 +21,7 @@ type Context = {
 };
 
 export async function POST(request: Request, context: Context) {
-  const { error, client } = await getAuthedUser(request);
+  const { error, client } = await getAuthedClient(request);
   if (error || !client) {
     return error ?? jsonError("Unauthorized", 401);
   }

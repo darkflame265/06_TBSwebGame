@@ -31,3 +31,12 @@ export const getAuthedUser = async (request: Request) => {
   }
   return { error: null, client, user };
 };
+
+export const getAuthedClient = async (request: Request) => {
+  const { createUserSupabaseFromRequest } = await import("@/lib/supabase/server");
+  const client = createUserSupabaseFromRequest(request);
+  if (!client) {
+    return { error: jsonError("Missing bearer token", 401), client: null };
+  }
+  return { error: null, client };
+};

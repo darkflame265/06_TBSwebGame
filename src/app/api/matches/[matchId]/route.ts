@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 export const preferredRegion = "icn1";
 import { z } from "zod";
-import { getAuthedUser, jsonError } from "@/lib/api";
+import { getAuthedClient, jsonError } from "@/lib/api";
 import { createAdminSupabase, createUserSupabaseFromRequest } from "@/lib/supabase/server";
 import { generateObstacles, seedForMatchRound, type Coord } from "@/lib/obstacles";
 import { generatePathForRole } from "@/lib/ai-planner";
@@ -113,7 +113,7 @@ async function buildMatchResponse(
 }
 
 export async function POST(request: Request, context: Context) {
-  const { error, client } = await getAuthedUser(request);
+  const { error, client } = await getAuthedClient(request);
   if (error || !client) {
     return error ?? jsonError("Unauthorized", 401);
   }
@@ -247,7 +247,7 @@ export async function POST(request: Request, context: Context) {
 }
 
 export async function GET(request: Request, context: Context) {
-  const { error, client } = await getAuthedUser(request);
+  const { error, client } = await getAuthedClient(request);
   if (error || !client) {
     return error ?? jsonError("Unauthorized", 401);
   }
